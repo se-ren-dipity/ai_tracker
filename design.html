@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 模型动态追踪平台 — 工程设计文档 v0.3</title>
+<style>
+  :root {
+    --bg: oklch(97.5% 0.003 240);
+    --surface: oklch(100% 0 0);
+    --surface-2: oklch(95.5% 0.004 240);
+    --border: oklch(89% 0.005 240);
+    --text: oklch(16% 0.01 240);
+    --muted: oklch(50% 0.012 240);
+    --accent: oklch(54% 0.17 248);
+    --accent-soft: oklch(94% 0.05 248);
+    --accent-text: oklch(37% 0.15 248);
+    --green: oklch(45% 0.14 145);
+    --green-bg: oklch(94% 0.05 145);
+    --r: 8px;
+    --rs: 5px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text);
+    font-size: 15px; line-height: 1.7;
+    padding: 40px 20px 80px;
+  }
+  .page { max-width: 900px; margin: 0 auto; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+    font-size: 13px; background: var(--surface-2);
+    padding: 1px 5px; border-radius: 3px; color: var(--accent-text);
+  }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 16px; overflow-x: auto;
+    margin: 14px 0; font-size: 13px; line-height: 1.65;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 40px; }
+  header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .vtag { display: inline-block; background: var(--accent-soft); color: var(--accent-text); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+
+  h2 { font-size: 17px; font-weight: 700; margin: 44px 0 14px; padding-left: 12px; border-left: 3px solid var(--accent); }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
+  p { margin-bottom: 12px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px 22px; margin: 14px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  @media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .note { background: oklch(97% 0.04 60); border-left: 3px solid oklch(68% 0.13 60); padding: 10px 14px; border-radius: 0 var(--r) var(--r) 0; margin: 12px 0; font-size: 14px; }
+  .changed { background: var(--green-bg); border-left: 3px solid var(--green); padding: 10px 14px; border-radius: 0 var(--r) var(--r) 0; margin: 12px 0; font-size: 14px; }
+  .changed strong { color: var(--green); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 14px 0; }
+  th { background: var(--surface-2); text-align: left; padding: 8px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); border-bottom: 2px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .arch {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+    padding: 20px; font-family: "SF Mono", Consolas, monospace;
+    font-size: 12.5px; line-height: 1.9; overflow-x: auto; color: var(--text);
+  }
+
+  .phase { display: flex; align-items: flex-start; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .phase:last-child { border-bottom: none; }
+  .pnum { flex-shrink: 0; width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; margin-top: 2px; }
+
+  .status-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+  .status-chip { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-green { background: oklch(58% 0.16 145); }
+  .dot-yellow { background: oklch(70% 0.16 75); }
+  .dot-red { background: oklch(56% 0.18 25); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>AI 模型动态追踪平台 <span class="vtag">v0.3</span></h1>
+  <div class="meta">工程设计文档 &nbsp;·&nbsp; 2026-10 &nbsp;·&nbsp; 已完成原型并验证运行</div>
+</header>
+
+<!-- ─── 当前状态 ─── -->
+<h2>实现状态（2026-10-21，实时数量见应用首页）</h2>
+
+<div class="status-row">
+  <div class="status-chip"><div class="dot dot-green"></div>服务入口 · localhost:8000</div>
+  <div class="status-chip"><div class="dot dot-green"></div>模型库 · 21 个种子模型</div>
+  <div class="status-chip"><div class="dot dot-green"></div>橘鸦早报 · 按章节拆条</div>
+  <div class="status-chip"><div class="dot dot-yellow"></div>AIHOT · 模型与行业资料</div>
+  <div class="status-chip"><div class="dot dot-green"></div>DeepSeek Agent · 事实与影响分析</div>
+</div>
+
+<div class="changed">
+  <strong>v0.3 个人情报整理</strong>：以独立事件组织信息。模型、工程、行业动态都保留，暂不限制技术方向和硬件。日报先拆条，再由 Agent 提取事实、分析影响、合并重复报道；首页展示整理后的情报，原文作为可追溯资料。关注范围见 <code>backend/collector/interest_profile.yaml</code>。
+</div>
+
+<!-- ─── 需求定义 ─── -->
+<div class="changed">
+  <strong>站内阅读更新（2026-10-21）</strong>：资讯标题进入本站详情页。采集器优先读取 RSS 全文，缺失时抓取详情页；清理后的正文结构与全文文本入库，使用本站样式展示标题、段落、列表、引用及配图。长文支持章节目录，返回列表保留筛选与阅读位置。原文链接保留在页尾；正文阅读不再依赖源站实时请求，配图仍引用外部地址。
+</div>
+<h2>需求定义（第一性原理）</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h3>📰 情报流</h3>
+    <p>每天 5 分钟扫一眼业界动态，不错过重要进展。</p>
+    <p style="color:var(--muted);font-size:13px">关键要求：内容密度高、每条读完即懂、关键信息视觉突出。</p>
+  </div>
+  <div class="card">
+    <h3>🗂 模型选型</h3>
+    <p>选型时快速找到"哪个模型适合这个场景"。</p>
+    <p style="color:var(--muted);font-size:13px">关键要求：字段准确、多维过滤、持续跟随最新发布更新。</p>
+  </div>
+</div>
+
+<!-- ─── 整体架构 ─── -->
+<h2>整体架构</h2>
+
+<div class="arch">
+橘鸦 RSS / AIHOT RSS + 详情页
+  │  每天北京时间 09:00；启动时也执行；每轮最多 30 份新原文
+  ▼
+articles 原文档案（清理后的 HTML + 全文文本，URL 去重）
+  │  橘鸦按新闻章节拆条，AIHOT 单篇作为一条
+  ▼
+source_items（独立条目、原文章节、链接、处理状态与原因）
+  │  每批 6 条完整信息 + 用户关注范围 + 候选已有事件
+  ▼
+DeepSeek 情报 Agent
+  ├─ 分类：模型发布 / 工程进展 / 行业动态
+  ├─ 事实 + 原文摘录 / 影响分析 / 待验证点 / 后续关注
+  ├─ 同一事件合并并保留来源；不同版本或不同事件分开
+  └─ JSON、条目 ID、引用定位及合并目标校验
+  │  校验失败保留 failed 状态，待下一次整理重试
+  ▼
+insights 情报库 ← SourceItem.insight_id 追溯全部出处
+  └─ 编辑 Agent → 连贯正文 + 对应章节配图 + 文末延伸阅读
+  ├─ 首页：焦点文章与图文列表，日期、分类、搜索、分页
+  ├─ 详情：连贯正文与关键配图，文末提供延伸阅读和出处
+  ├─ 页脚内容管理：更新状态、模型审核、原文档案
+  └─ 新模型名称 / Models Table / 新报道 / 到期复查 → model_tasks 持久任务
+       → 独立执行进程：联网研究 → 保存研究结果 → 判断入库 → 模型档案与关联报道
+</div>
+
+<!-- ─── 信源策略 ─── -->
+<h2>信源策略</h2>
+
+<div class="changed">
+  <strong>目前收录橘鸦与 AIHOT。</strong>两者提供候选资料，项目 Agent 再整理、分析并合并同一事件。单次采集上限 30 份原文，每天 09:00 与服务启动时触发；手动整理只处理数据库里的待处理及失败条目。
+</div>
+
+<table>
+  <thead><tr><th>信源</th><th>RSS 地址</th><th>每日条数</th><th>处理方式</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>橘鸦早报</strong></td>
+      <td><code>daily.juya.uk/rss.xml</code></td>
+      <td>10-20 条</td>
+      <td>原文归档，新闻章节拆分后逐条分析</td>
+    </tr>
+    <tr>
+      <td><strong>AIHOT 模型</strong></td>
+      <td><code>aihot.news/feed/full/category/ai-models.xml</code></td>
+      <td>5-15 条</td>
+      <td>单篇归档并分析，同一事件关联多个出处</td>
+    </tr>
+    <tr>
+      <td><strong>AIHOT 行业</strong></td>
+      <td><code>aihot.news/feed/full/category/industry.xml</code></td>
+      <td>3-8 条</td>
+      <td>单篇归档并分析，同一事件关联多个出处</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ─── DeepSeek 职责 ─── -->
+<h2>DeepSeek API 职责</h2>
+
+<p>输入独立信息的完整正文、当前关注范围与可能重复的已有事件。行业信息与模型、工程同样保留，不因融资、商业或产品类别直接降权。</p>
+<table>
+<thead><tr><th>任务</th><th>输出</th><th>质量约束</th></tr></thead>
+<tbody>
+<tr><td>整理独立事件</td><td>标题、摘要、分类、关键词、优先级</td><td>每条输入有对应状态；过滤保留原因</td></tr>
+<tr><td>事实提取</td><td>关键事实、原文摘录、来源条目 ID</td><td>逐条校验摘录能在原文定位；不代表事实已核实</td></tr>
+<tr><td>分析影响</td><td>影响分析、限制与待验证点、后续关注</td><td>分析与信源陈述分开，不假装访问过一手链接</td></tr>
+<tr><td>同事件合并</td><td>事件标识、已有事件关联、多来源</td><td>重复报道保留出处；不同版本、榜单变化和第三方上架分别处理</td></tr>
+<tr><td>Model card benchmark 抽取</td><td>数值 JSON</td><td>低置信度、待人工核实</td></tr>
+</tbody></table>
+<p>结构化输出校验失败会重试一次；仍失败则保存 failed 状态，不发布无依据的情报。页面可重试。鉴权、余额或限流错误停止剩余批次。去重和分析由模型判断，仍可能误合并或漏合并。</p>
+
+<!-- ─── Model Enrich Agent ─── -->
+<h2>模型资料 Agent</h2>
+
+<h3>触发条件</h3>
+<p>新闻识别出新模型、LifeArchitect 公开表导入候选，或在模型审核页运行资料 Agent。可批量处理草稿、补查已有模型，也可单独处理一条记录。</p>
+
+<h3>执行流程</h3>
+<div class="card">
+  <div class="phase">
+    <div class="pnum">1</div>
+    <div><strong>汇集候选</strong>：新闻中的 <code>model_names[]</code> 或公开表提供名称和初始资料。已有模型从库中读取当前字段。</div>
+  </div>
+  <div class="phase">
+    <div class="pnum">2</div>
+    <div>
+      <strong>并行查询（asyncio.gather）</strong><br>
+      ① <code>GET huggingface.co/api/models/{id}</code> → 参数量、license、pipeline_tag、语言、下载量 <strong>（仓库匹配仍需确认）</strong><br>
+      ② <code>GET huggingface.co/{id}/raw/main/README.md</code> → DeepSeek 抽取 benchmark <strong>（低置信，需审核）</strong><br>
+      ③ 如找不到精确 HF ID，先用 HF search API 搜索最相关的
+    </div>
+  </div>
+  <div class="phase">
+    <div class="pnum">3</div>
+    <div>
+      <strong>整合草稿，每字段标置信度</strong>
+<pre style="margin-top:8px"><code>{
+  "name": "Qwen3-30B",
+  "type": "LLM",           // pipeline_tag 映射 → 高
+  "params_b": 30.0,        // safetensors.total / tags → 高
+  "license": "Apache 2.0", // cardData.license → 高
+  "context_length": null,  // 难以可靠提取，留空待确认
+  "benchmarks": {...},     // README 提取 → 低，需核实
+  "hf_url": "...",
+  "hf_downloads": 12345,
+  "confidence": {
+    "type": "high", "params_b": "high",
+    "license": "high", "benchmarks": "low"
+  }
+}</code></pre>
+    </div>
+  </div>
+  <div class="phase">
+    <div class="pnum">4</div>
+    <div><strong>联网补查</strong>：现有 DeepSeek Key 调用 Search / Fetch，Agent 自主选择关键词、跟进官网、模型卡、报告和提供商文档。每个模型最多搜索 3 次、读取 4 个页面；研究结束先保存结果，再判断入库。空字段自动补充，月份日期可细化；与现值不同的资料形成更正建议，在管理页处理。</div>
+  </div>
+  <div class="phase">
+    <div class="pnum">5</div>
+    <div><strong>判断并入库</strong>：有可信资料证明具体模型存在即可收录。闭源、参数未公开、无 HF 仓库、暂未开放使用都不阻止入库；官方公布的研究模型也收录。身份仍不确定才暂缓，明确不是模型的标为未收录。按名称去重，已有模型原位补充，失败保留已有数据。</div>
+  </div>
+</div>
+
+<p>“模型库 → 模型审核”提供排队、复查、任务状态和资料更正入口。独立执行进程使用 90 秒租约、每 20 秒续期，进程退出后可接续已保存的研究结果；每项最多尝试 3 次，之后由管理页重试。一般模型每 7 天复查，闭源或明确有未公开字段的模型每 30 天复查，新报道可提前触发。运行与审核信息只在管理页展示。</p>
+<p>模型名称进入独立档案：简介、能力规格、相关报道、资料入口及已采用的更新。字段区分已知、尚未找到、明确未公开、不适用和冲突。模型存在状态与权重、API、公布日、开放日分别保存。一篇文章可以关联多个模型。</p>
+
+<h3>HuggingFace API 直接给出的字段（无需 LLM，高可信）</h3>
+<table>
+  <thead><tr><th>字段</th><th>HF API 路径</th></tr></thead>
+  <tbody>
+    <tr><td>任务类型</td><td><code>pipeline_tag</code>（text-generation / asr / tts / ...）</td></tr>
+    <tr><td>参数量</td><td><code>safetensors.total</code> 或 tags 中的 <code>7B</code> 形式</td></tr>
+    <tr><td>许可证</td><td><code>cardData.license</code> 或 tags 中的 <code>license:apache-2.0</code></td></tr>
+    <tr><td>支持语言</td><td><code>cardData.language[]</code></td></tr>
+    <tr><td>发布时间</td><td><code>createdAt</code></td></tr>
+    <tr><td>热度</td><td><code>downloads</code>、<code>likes</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ─── 数据模型 ─── -->
+<h2>数据模型</h2>
+
+<h3>source_items 表</h3>
+<pre><code>id, article_id, section_key UNIQUE, section_id,
+title, body_text, links, published,
+status,          -- pending | analyzed | filtered | failed
+reason, insight_id, analyzed_at</code></pre>
+<h3>insights 表</h3>
+<pre><code>id, event_key UNIQUE, title, category, summary,
+body_paragraphs, -- JSON 自然段；新报道合并后重新编排
+facts,           -- JSON [{text, quote, source_item_id}]
+analysis, cautions, next_step, keywords, model_names,
+priority, published, related_model_id, generated_at</code></pre>
+<p>按来源条目的北京时间日期检索，同一事件可出现在多个资料日。成功条目不重复调用模型；修改关注配置仅影响后续整理。</p>
+<h3>articles 表（原文档案，旧分类字段保留兼容）</h3>
+<pre><code>id, url, title, source, published,
+raw_content,        -- 保留原文，不重写
+summary_zh,         -- 同 raw_content（字段兼容）
+content_html,       -- 清理后的正文结构，站内阅读使用
+content_text,       -- 全文文本，支持正文搜索
+content_source,     -- feed | page | summary（摘要降级）
+content_fetched_at, -- 正文收录时间
+category,           -- model_release | engineering | research | product | other
+tags,               -- JSON array（保留兼容）
+keywords,           -- JSON array，技术关键词，前端高亮用
+relevance,          -- 0.0~1.0
+related_model_id,   -- 关联模型库条目（NULL 或 models.id）
+created_at</code></pre>
+
+<h3>models 表</h3>
+<pre><code>id, name, full_name, organization, type,
+params_b, context_length, license,
+languages, modality_in, modality_out,  -- JSON arrays
+benchmarks,                            -- JSON object
+hf_url, hf_downloads, hf_likes,
+paper_url, github_url, source_url,
+release_date, release_precision, -- 兼容原有日期，不据此推断开放日
+existence_status, weight_access, api_availability,
+announced_date, available_date, field_states,
+last_checked_at, next_review_at,
+notes, updated_at</code></pre>
+
+<h3>pending_models 表（新增）</h3>
+<pre><code>id, draft,              -- JSON，完整草稿
+confidence,             -- JSON，per-field 置信度
+source_article_id,      -- 触发来源文章
+source_insight_id,      -- 触发的独立情报
+status,                 -- draft | approved | rejected
+evidence,               -- 原始资料 JSON；research 保存查询、正文、引用、应用字段与未解决项
+review_decision,         -- approved | deferred | rejected | failed
+review_reason, reviewer, reviewed_at,
+model_id,               -- 入库或关联的模型
+created_at</code></pre>
+
+<h3>model_tasks / model_observations / model_insights</h3>
+<pre><code>model_tasks: pending_id UNIQUE, status, stage, reason, priority,
+attempts, next_run_at, owner, lease_until, checkpoint, error,
+requested_at, started_at, finished_at
+
+model_observations: model_id, field, value, previous_value,
+state, status, url, quote, observed_at, resolved_at, fingerprint UNIQUE
+
+model_insights: model_id + insight_id 联合主键, seen_at</code></pre>
+
+<h3>daily_digest 表（保留旧接口，非当前情报首页）</h3>
+<pre><code>date (PK), content,     -- JSON，按类别分组的条目
+generated</code></pre>
+
+<!-- ─── API ─── -->
+<h2>API 端点</h2>
+
+<table>
+  <thead><tr><th>端点</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/insights</code></td><td>整理后的情报：day/category/q/page/page_size</td></tr>
+    <tr><td><code>GET /api/insights/{id}</code></td><td>正文段落、章节配图、延伸链接；保留底层事实与出处</td></tr>
+    <tr><td><code>GET /api/insights/dates</code></td><td>已发布文章的可浏览日期，首页不加载后台状态</td></tr>
+    <tr><td><code>GET /api/insights/status</code></td><td>数量、处理状态、日期和关注范围</td></tr>
+    <tr><td><code>POST /api/insights/refresh</code></td><td>整理待处理/失败条目，进程内避免重复运行</td></tr>
+    <tr><td><code>GET /api/articles</code></td><td>文章列表，支持 q / category / source / page 过滤</td></tr>
+    <tr><td><code>GET /api/articles/{id}</code></td><td>读取已入库正文，站内阅读；列表接口不携带完整正文</td></tr>
+    <tr><td><code>GET /api/articles/today</code></td><td>今日文章，按类别分组</td></tr>
+    <tr><td><code>GET /api/articles/daily/{date}</code></td><td>指定日期日报</td></tr>
+    <tr><td><code>GET /api/articles/sources</code></td><td>信源列表及条数</td></tr>
+    <tr><td><code>GET /api/models</code></td><td>模型列表，支持 type / org / license / params / ctx / lang / q / sort</td></tr>
+    <tr><td><code>GET /api/models/filters</code></td><td>过滤器可选值（类型/机构/许可证）</td></tr>
+    <tr><td><code>GET /api/models/{id}</code></td><td>模型档案、相关文章、已采用更新及资料入口</td></tr>
+    <tr><td><code>POST /api/models</code></td><td>手工新增模型条目</td></tr>
+    <tr><td><code>GET /api/pending</code></td><td>按 status 查看待确认、已入库、未收录及全部记录</td></tr>
+    <tr><td><code>POST /api/pending/review</code></td><td>后台运行资料 Agent；pending_id 可指定一条记录</td></tr>
+    <tr><td><code>POST /api/pending/enrich</code></td><td>补查缺少资料的已入库模型；model_id 可指定模型</td></tr>
+    <tr><td><code>GET /api/pending/changes</code></td><td>待处理的字段更正建议</td></tr>
+    <tr><td><code>POST /api/pending/changes/{id}/accept 或 dismiss</code></td><td>采用更正或保留现值，保留历史依据</td></tr>
+    <tr><td><code>POST /api/pending/{id}/approve</code></td><td>审核通过 → 入库</td></tr>
+    <tr><td><code>POST /api/pending/{id}/reject</code></td><td>丢弃草稿</td></tr>
+  </tbody>
+</table>
+
+<!-- ─── 目录结构 ─── -->
+<h2>目录结构</h2>
+
+<pre><code>D:\模型收集\
+├── backend/
+│   ├── main.py                  FastAPI 入口，SPA 托管
+│   ├── database.py              SQLAlchemy + SQLite
+│   ├── seed.py                  21 个主流模型种子数据
+│   ├── collector/
+│   │   ├── feeds.py             RSS 抓取 + 日期解析
+│   │   ├── content.py           正文提取、HTML 清理与图片链接处理
+│   │   ├── backfill_content.py  已有资讯正文补采（可重复运行）
+│   │   ├── enricher.py          DeepSeek 共享客户端
+│   │   ├── source_items.py      原文拆条
+│   │   ├── insight_agent.py     情报分析、校验和合并
+│   │   ├── insight_models.py    情报到模型审核队列
+│   │   ├── interest_profile.yaml 个人关注范围
+│   │   ├── process_insights.py  存量整理命令
+│   │   ├── model_agent.py       Model Enrich Agent（HF API）
+│   │   ├── model_research.py    联网搜索、正文读取、字段引用校验
+│   │   ├── model_review.py      研究与入库判断、去重和原位补充
+│   │   ├── model_jobs.py        持久任务、租约与到期复查
+│   │   ├── model_worker.py      独立执行进程与续期
+│   │   ├── model_profiles.py    字段依据、资料更正及文章关联
+│   │   ├── scheduler.py         APScheduler，每天 09:00 触发
+│   │   └── sources.yaml         信源配置（橘鸦 + AIHOT 两路）
+│   ├── models/
+│   │   ├── article.py           原文 ORM
+│   │   ├── insight.py           情报及来源条目 ORM
+│   │   ├── model_db.py          模型库 ORM
+│   │   ├── pending.py           待审核草稿 ORM
+│   │   └── digest.py            日报缓存 ORM
+│   └── routers/
+│       ├── articles.py          /api/articles
+│       ├── insights.py          /api/insights
+│       ├── models.py            /api/models
+│       └── pending.py           /api/pending
+├── frontend/
+│   ├── index.html               SPA 布局与原有视图（无构建步骤）
+│   ├── models.js / models.css   模型档案阅读与资料更正入口
+│   └── insights.js              情报列表、图文阅读与整理状态
+├── data/
+│   └── tracker.db               SQLite 数据库（自动创建）
+├── .env                         DEEPSEEK_API_KEY / DB_PATH
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+└── README.md</code></pre>
+
+<!-- ─── 成本 ─── -->
+<h2>运行与恢复</h2>
+<p>分析费用由条目正文、候选事件和输出长度决定，以 API 账单为准。完整分析比旧版关键词分类消耗更多 token；成功条目不会重复分析。</p>
+<pre><code>python -m backend.collector.backfill_content   # 旧摘要补采正文
+python -m backend.collector.process_insights   # 拆分、分析待处理/失败信息
+python -m unittest discover -s backend/tests -v</code></pre>
+<p>SQLite 自动增量迁移，原文章节与已有模型保留。改造前备份为 <code>data/tracker.before-insights.db</code>。使用单个服务进程；离线整理命令不要与服务内整理并发运行。无 HF 资料时草稿保留未知字段，不猜类型或输入输出模态。</p>
+
+<!-- ─── 下一步 ─── -->
+<h2>下一步迭代方向</h2>
+
+<ul>
+  <li>模型详情页（参数、benchmark 图、关联情报列表）</li>
+  <li>对重要事件增加一手来源核实与人工纠错</li>
+  <li>模型库支持手动编辑（context length、benchmark 核实）</li>
+  <li>RSS 订阅输出（将采集结果再暴露为 RSS 给他人订阅）</li>
+  <li>邮件/Webhook 日报推送（可选）</li>
+</ul>
+
+</div>
+</body>
+</html>

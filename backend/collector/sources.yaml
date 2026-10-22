@@ -1,0 +1,12 @@
+sources:
+  - name: 橘鸦早报
+    url: https://daily.juya.uk/rss.xml
+    type: rss
+
+  - name: AIHOT 模型
+    url: https://aihot.news/feed/full/category/ai-models.xml
+    type: rss
+
+  - name: AIHOT 行业
+    url: https://aihot.news/feed/full/category/industry.xml
+    type: rss
