@@ -42,8 +42,8 @@ async def collect_and_analyze():
 
 
 def start_scheduler():
-    scheduler.add_job(collect_and_analyze, "cron", hour=9, minute=0,
+    scheduler.add_job(collect_and_analyze, "cron", hour=10, minute=0,
                       id="daily_collect", replace_existing=True)
     scheduler.start()
     asyncio.create_task(collect_and_analyze())
-    logger.info("Scheduler started — daily collection at 09:00 Asia/Shanghai")
+    logger.info("Scheduler started — daily collection at 10:00 Asia/Shanghai")

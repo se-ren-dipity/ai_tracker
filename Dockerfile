@@ -1,4 +1,4 @@
-"""Dockerfile for the AI Tracker backend."""
+# Dockerfile for the AI Tracker backend.
 FROM python:3.11-slim
 
 WORKDIR /app

@@ -131,7 +131,7 @@
 
 <div class="arch">
 橘鸦 RSS / AIHOT RSS + 详情页
-  │  每天北京时间 09:00；启动时也执行；每轮最多 30 份新原文
+  │  每天北京时间 10:00；启动时也执行；每轮最多 30 份新原文
   ▼
 articles 原文档案（清理后的 HTML + 全文文本，URL 去重）
   │  橘鸦按新闻章节拆条，AIHOT 单篇作为一条
@@ -159,7 +159,7 @@ insights 情报库 ← SourceItem.insight_id 追溯全部出处
 <h2>信源策略</h2>
 
 <div class="changed">
-  <strong>目前收录橘鸦与 AIHOT。</strong>两者提供候选资料，项目 Agent 再整理、分析并合并同一事件。单次采集上限 30 份原文，每天 09:00 与服务启动时触发；手动整理只处理数据库里的待处理及失败条目。
+  <strong>目前收录橘鸦与 AIHOT。</strong>两者提供候选资料，项目 Agent 再整理、分析并合并同一事件。单次采集上限 30 份原文，每天 10:00 与服务启动时触发；手动整理只处理数据库里的待处理及失败条目。
 </div>
 
 <table>
@@ -391,7 +391,7 @@ generated</code></pre>
 │   │   ├── model_jobs.py        持久任务、租约与到期复查
 │   │   ├── model_worker.py      独立执行进程与续期
 │   │   ├── model_profiles.py    字段依据、资料更正及文章关联
-│   │   ├── scheduler.py         APScheduler，每天 09:00 触发
+│   │   ├── scheduler.py         APScheduler，每天 10:00 触发
 │   │   └── sources.yaml         信源配置（橘鸦 + AIHOT 两路）
 │   ├── models/
 │   │   ├── article.py           原文 ORM

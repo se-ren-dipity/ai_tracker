@@ -131,7 +131,7 @@ async function loadInsight(id) {
       <article class="insight-prose" aria-label="文章正文">${paragraphs.map((paragraph, index) => {
         const img = imageSlots.get(index);
         const alt = img && (img.alt || `${item.title} · 配图 ${images.indexOf(img) + 1}`);
-        return `<p${index === 0 ? ' class="article-lead"' : ""}>${index === 0 ? esc(paragraph) : articleText(paragraph, item.keywords.slice(0, 4), emphasized)}</p>${img ? `<figure class="article-figure"><button type="button" class="article-image" aria-label="放大：${esc(alt)}"><img src="${esc(img.url)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"></button><figcaption>${esc(img.caption || "配图来自" + img.source)}<span>点击放大</span></figcaption></figure>` : ""}`;
+        return `<p${index === 0 ? ' class="article-lead"' : ""}>${index === 0 ? esc(paragraph) : articleText(paragraph, item.keywords.slice(0, 4), emphasized)}</p>${img ? `<figure class="article-figure"><button type="button" class="article-image" aria-label="放大：${esc(alt)}"><img src="${esc(img.url)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"></button><figcaption><span>点击放大</span></figcaption></figure>` : ""}`;
       }).join("")}</article>
       ${(item.models || []).length ? `<div class="article-model">${item.models.map(model => renderModelChip(model.id, model.name)).join("")}</div>` : item.related_model_id ? `<div class="article-model">${renderModelChip(item.related_model_id)}</div>` : ""}
       <footer class="article-end">
