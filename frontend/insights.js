@@ -55,16 +55,7 @@ async function loadInsights(refreshDates = true) {
     count.textContent = `${params.has("q") ? "找到 " : ""}${data.total} 篇文章`;
     const featureFirst = insightPage === 1 && !params.has("q") && !params.has("category");
     list.innerHTML = data.items.length ? data.items.map((item, index) => renderStory(item, featureFirst && index === 0)).join("") : '<div class="empty">没有找到文章，试试其他关键词、日期或分类。</div>';
-    list.querySelectorAll(".story-image img").forEach(img => {
-      const picture = img.closest(".story-image");
-      const story = img.closest(".story");
-      const hideUnavailable = () => {
-        story.classList.add("no-image");
-        picture.remove();
-      };
-      img.addEventListener("error", hideUnavailable, {once:true});
-      if (img.complete && !img.naturalWidth) hideUnavailable();
-    });
+    list.querySelectorAll(".story").forEach((story, index) => bindStoryImage(story, data.items[index]));
     const totalPages = Math.ceil(data.total / 12);
     if (totalPages > 1) {
       pages.innerHTML = `<button class="btn btn-reject" id="insight-prev" ${insightPage === 1 ? "disabled" : ""}>上一页</button><span>${insightPage} / ${totalPages}</span><button class="btn btn-reject" id="insight-next" ${insightPage === totalPages ? "disabled" : ""}>下一页</button>`;
@@ -76,8 +67,33 @@ async function loadInsights(refreshDates = true) {
   }
 }
 
+function storyCoverImages(item) {
+  return (item.cover_images || (item.cover_image ? [item.cover_image] : []))
+    .filter(image => /^https?:\/\//i.test(image.url));
+}
+
+function bindStoryImage(story, item) {
+  const img = story.querySelector(".story-image img");
+  if (!img) return;
+  const covers = storyCoverImages(item);
+  let index = 0;
+  const tryNextImage = () => {
+    const next = covers[++index];
+    if (next) {
+      img.alt = next.alt || item.title;
+      img.src = next.url;
+    } else {
+      img.removeEventListener("error", tryNextImage);
+      story.classList.add("no-image");
+      story.querySelector(".story-image").remove();
+    }
+  };
+  img.addEventListener("error", tryNextImage);
+  if (img.complete && !img.naturalWidth) tryNextImage();
+}
+
 function renderStory(item, featured) {
-  const cover = item.cover_image && /^https?:\/\//i.test(item.cover_image.url) ? item.cover_image : null;
+  const cover = storyCoverImages(item)[0];
   const text = item.body_paragraphs?.[0] || item.summary || "";
   const minutes = Math.max(1, Math.ceil((item.body_paragraphs?.join("") || text).length / 450));
   return `<article class="story${featured ? " story-featured" : ""}${cover ? "" : " no-image"}">

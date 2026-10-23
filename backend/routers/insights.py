@@ -80,6 +80,7 @@ def list_insights(
         data["sources"] = source_refs(db, row.id)
         images = reading_assets(db, row.id)["images"]
         data["cover_image"] = images[0] if images else None
+        data["cover_images"] = images
         items.append(data)
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 

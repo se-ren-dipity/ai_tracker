@@ -175,6 +175,21 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
         self.assertIsNone(self.client.get("/api/insights").json()["items"][0]["cover_image"])
 
+    def test_list_includes_alternate_covers_from_the_same_event(self):
+        with self.session() as db:
+            db.get(Article, 1).content_html = '<p><img src="https://test/first.png"></p>'
+            db.get(Article, 2).content_html = '<p><img src="https://test/second.png"></p>'
+            db.get(Article, 3).content_html = '<p><img src="https://test/unrelated.png"></p>'
+            agent.save_analysis(db, result())
+            db.commit()
+            agent.save_analysis(db, result(2, duplicate_of=1))
+            db.commit()
+        item = self.client.get("/api/insights").json()["items"][0]
+        self.assertEqual([image["url"] for image in item["cover_images"]],
+                         ["https://test/first.png", "https://test/second.png"])
+        self.assertEqual(item["cover_image"], item["cover_images"][0])
+        self.assertEqual(item["cover_images"], self.client.get("/api/insights/1").json()["images"])
+
     async def test_model_queue_and_approval_keep_event_link(self):
         with self.session() as db:
             agent.save_analysis(db, result())
