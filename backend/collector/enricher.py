@@ -8,6 +8,16 @@ DEEPSEEK_MODEL = "deepseek-chat"
 _client = None
 
 
+def thinking_options(answer_tokens: int) -> dict:
+    """Background tasks share high reasoning and room for thought plus the answer."""
+    return {
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+        "max_tokens": answer_tokens + 8192,
+        "timeout": 300,
+    }
+
+
 def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:

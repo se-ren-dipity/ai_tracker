@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.collector.enricher import DEEPSEEK_MODEL, get_client
+from backend.collector.enricher import DEEPSEEK_MODEL, get_client, thinking_options
 from backend.collector.model_research import apply_findings, research_model
 from backend.collector.model_profiles import link_model, record_research, schedule_review
 from backend.database import SessionLocal
@@ -55,8 +55,8 @@ async def judge_batch(items, existing):
         {"candidates": items, "existing_models": existing}, ensure_ascii=False)}]
     for attempt in range(2):
         response = await get_client().chat.completions.create(
-            model=DEEPSEEK_MODEL, messages=messages, temperature=0.1, max_tokens=4000,
-            response_format={"type": "json_object"}, extra_body={"thinking": {"type": "disabled"}})
+            model=DEEPSEEK_MODEL, messages=messages,
+            response_format={"type": "json_object"}, **thinking_options(4000))
         try:
             if response.choices[0].finish_reason != "stop":
                 raise ValueError("审核响应未完整结束")

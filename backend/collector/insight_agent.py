@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import yaml
 from pydantic import BaseModel, Field
 
-from backend.collector.enricher import get_client, DEEPSEEK_MODEL
+from backend.collector.enricher import get_client, DEEPSEEK_MODEL, thinking_options
 from backend.collector.source_items import prepare_source_items
 from backend.database import SessionLocal
 from backend.models.insight import Insight, SourceItem
@@ -143,12 +143,11 @@ async def analyze_batch(items, existing):
     }
     messages = [{"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
-    client = get_client().with_options(timeout=120, max_retries=0)
+    client = get_client()
     for attempt in range(2):
         response = await client.chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages, response_format={"type": "json_object"},
-            extra_body={"thinking": {"type": "disabled"}}, temperature=0.1,
-            max_tokens=10000,
+            **thinking_options(10000),
         )
         raw = response.choices[0].message.content or ""
         try:

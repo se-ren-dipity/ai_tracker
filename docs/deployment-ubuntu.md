@@ -181,6 +181,8 @@ sudo docker compose ps
 
 修改 `.env` 使用 `up -d` 重建环境变化的容器；`restart` 不会加载新的环境变量。修改代码后重新 build。直接依赖固定为本机测试通过的版本；Docker 使用 `backend/requirements.lock` 固定 Linux/Python 3.11 的传递依赖。锁文件已完成解析，实际 Linux 镜像构建仍需在目标服务器验证。需要升级依赖时先修改 requirements.txt，再运行 `uv pip compile backend/requirements.txt --python-version 3.11 --python-platform x86_64-unknown-linux-gnu --output-file backend/requirements.lock`，运行测试并在服务器验证新镜像。
 
+2026-10-29 的后台思考更新在代码中统一启用 `thinking=enabled`、`reasoning_effort=high`，无需增加 `.env` 配置。按上述步骤拉取后执行 `sudo docker compose up -d --build`，让三个服务载入更新；无需数据库迁移，不自动重跑已完成新闻或全库补查。处理时间与输出 token 可能增加，范围、上限及本机验证见[后台思考模式](model-agent-v1.md#后台思考模式)。服务器是否生效仍需在部署后单独验收。
+
 回退前停止全部服务并保存故障现场。恢复与旧代码版本匹配的数据库备份，保留备份之后新增的数据副本；恢复会丢失备份后的变化。为三个服务都覆盖镜像：
 
 ```yaml

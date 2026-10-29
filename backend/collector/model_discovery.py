@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
-from backend.collector.enricher import get_client, DEEPSEEK_MODEL
+from backend.collector.enricher import get_client, DEEPSEEK_MODEL, thinking_options
 from backend.collector.insight_models import model_key
 from backend.collector.model_profiles import link_model
 from backend.collector.model_research import Findings, LifecycleEvent, ModelField, normalized, validate_findings, apply_findings
@@ -117,9 +117,9 @@ async def extract_batch(items):
     for attempt in range(2):
         messages = [{"role": "system", "content": PROMPT},
                     {"role": "user", "content": json.dumps({"items": remaining, "validation_errors": errors}, ensure_ascii=False)}]
-        response = await get_client().with_options(timeout=120, max_retries=0).chat.completions.create(
-            model=DEEPSEEK_MODEL, messages=messages, temperature=0.1, max_tokens=6000,
-            response_format={"type": "json_object"}, extra_body={"thinking": {"type": "disabled"}})
+        response = await get_client().chat.completions.create(
+            model=DEEPSEEK_MODEL, messages=messages,
+            response_format={"type": "json_object"}, **thinking_options(6000))
         try:
             if response.choices[0].finish_reason != "stop":
                 raise ValueError("收录对账响应被截断")

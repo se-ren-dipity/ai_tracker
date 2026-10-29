@@ -6,7 +6,7 @@ import logging
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 
-from backend.collector.enricher import DEEPSEEK_MODEL, get_client
+from backend.collector.enricher import DEEPSEEK_MODEL, get_client, thinking_options
 from backend.database import SessionLocal, init_db
 from backend.models.article import Article
 from backend.models.insight import Insight, SourceItem
@@ -33,13 +33,13 @@ class EditedArticle(BaseModel):
 
 
 async def edit_batch(items):
-    client = get_client().with_options(timeout=120, max_retries=0)
+    client = get_client()
     messages = [{"role": "system", "content": EDITOR_PROMPT},
                 {"role": "user", "content": json.dumps(items, ensure_ascii=False)}]
     for attempt in range(2):
         response = await client.chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages, response_format={"type": "json_object"},
-            extra_body={"thinking": {"type": "disabled"}}, temperature=0.1, max_tokens=8500)
+            **thinking_options(8500))
         try:
             if response.choices[0].finish_reason == "length":
                 raise ValueError("文章输出被截断")

@@ -87,8 +87,8 @@ class ResearchTests(unittest.IsolatedAsyncioTestCase):
         findings = {"identity": [{"source_id": 1, "quote": quote}], "updates": [{"source_id": 1, "quote": quote, "field": "context_length", "value": 1000000}], "unresolved": ["参数量未公开"]}
         client = MagicMock()
         client.chat.completions.create = AsyncMock(side_effect=[
-            SimpleNamespace(choices=[SimpleNamespace(message=message([tool_call]))]),
-            SimpleNamespace(choices=[SimpleNamespace(message=message(content="Enough evidence"))]),
+            SimpleNamespace(choices=[SimpleNamespace(finish_reason="tool_calls", message=message([tool_call]))]),
+            SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=message(content="Enough evidence"))]),
             SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=message(content=json.dumps(findings)))])])
         async def execute(session, name, arguments):
             session.sources = [source]

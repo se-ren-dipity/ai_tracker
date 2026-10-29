@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from backend.collector.enricher import DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, get_client
+from backend.collector.enricher import DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, get_client, thinking_options
 
 MAX_SEARCHES, MAX_FETCHES, MAX_ROUNDS = 3, 4, 3
 logger = logging.getLogger(__name__)
@@ -303,7 +303,9 @@ async def research_model(draft, evidence):
              "known_urls": sorted(session.allowed), "registry_lookup": initial, "sources": session.sources}, ensure_ascii=False)}]
         for _ in range(MAX_ROUNDS):
             response = await get_client().chat.completions.create(model=DEEPSEEK_MODEL, messages=messages, tools=TOOLS,
-                temperature=0.1, max_tokens=3000, extra_body={"thinking": {"type": "disabled"}})
+                **thinking_options(3000))
+            if response.choices[0].finish_reason == "length":
+                raise ValueError("资料研究响应被截断")
             message = response.choices[0].message
             calls = message.tool_calls or []
             messages.append(message.model_dump(exclude_none=True))
@@ -319,7 +321,7 @@ async def research_model(draft, evidence):
         messages.append({"role": "user", "content": "现在按规定 JSON 返回 identity、identity_links、updates、events、field_statuses、unresolved。没有足够依据就留空，不再调用工具。"})
         for attempt in range(2):
             response = await get_client().chat.completions.create(model=DEEPSEEK_MODEL, messages=messages,
-                temperature=0.1, max_tokens=4000, response_format={"type": "json_object"}, extra_body={"thinking": {"type": "disabled"}})
+                response_format={"type": "json_object"}, **thinking_options(4000))
             try:
                 if response.choices[0].finish_reason != "stop":
                     raise ValueError("资料提取响应不完整")

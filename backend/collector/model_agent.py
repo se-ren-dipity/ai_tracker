@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 
-from backend.collector.enricher import get_client
+from backend.collector.enricher import get_client, thinking_options
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +70,11 @@ async def _extract_benchmarks(readme: str, model_name: str) -> dict:
         resp = await client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=800,
             response_format={"type": "json_object"},
-            extra_body={"thinking": {"type": "disabled"}},
+            **thinking_options(800),
         )
+        if resp.choices[0].finish_reason == "length":
+            raise ValueError("Benchmark extraction response was truncated")
         raw = resp.choices[0].message.content.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
