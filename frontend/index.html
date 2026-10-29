@@ -149,7 +149,18 @@
   .range-row { display: flex; gap: 6px; }
   .range-row input { width: calc(50% - 3px); }
 
-  .table-area { flex: 1; min-width: 0; overflow-x: auto; }
+  .table-area { flex: 1; min-width: 0; }
+  .model-table-scroll { overflow-x: auto; }
+  .model-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .model-list-toolbar .count-bar { margin: 0; }
+  .model-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .model-pagination .btn { padding: 5px 9px; font-size: 12px; }
+  #m-pages-bottom:not(:empty) { margin-top: 16px; }
+  #mt { table-layout: fixed; min-width: 810px; }
+  #mt .model-name-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .model-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; height: 36px; line-height: 18px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .model-cell-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  #mt .num-cell { white-space: nowrap; }
   .count-bar { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
   table.mt { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
   table.mt th { background: var(--surface-2); text-align: left; padding: 9px 12px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }
@@ -164,6 +175,7 @@
   .t-VLM     { background: oklch(92% 0.07 300); color: oklch(37% 0.13 300); }
   .t-TTS     { background: oklch(92% 0.07 160); color: oklch(35% 0.10 160); }
   .t-ASR     { background: oklch(92% 0.07 185); color: oklch(35% 0.10 185); }
+  .t-Speech  { background: oklch(92% 0.07 175); color: oklch(35% 0.10 175); }
   .t-VideoGen{ background: oklch(92% 0.07 25);  color: oklch(37% 0.12 25); }
   .t-ImageGen{ background: oklch(92% 0.07 5);   color: oklch(37% 0.13 5); }
   .t-Embedding{ background: oklch(92% 0.06 130); color: oklch(34% 0.09 130); }
@@ -382,9 +394,10 @@
 
 <div class="page">
   <nav class="management-nav" id="management-nav" aria-label="内容管理" hidden>
-    <a href="#manage" data-manage="manage">内容更新</a>
+    <a href="#manage" data-manage="manage">运行管理</a>
     <a href="#pending" data-manage="pending">模型审核<span class="badge-count" id="pending-count" style="display:none"></span></a>
     <a href="#sources" data-manage="sources">原文档案</a>
+    <button class="btn btn-reject" id="admin-logout" hidden>退出管理</button>
   </nav>
 
   <!-- ── 情报流 ── -->
@@ -464,9 +477,14 @@
         </div>
         <div class="fg"><label>关键词</label><input type="text" id="m-q" placeholder="搜索名称/机构…"></div>
       </div>
-      <div class="table-area" tabindex="0" role="region" aria-label="模型列表，可横向滚动">
-        <div class="count-bar" id="m-count"></div>
+      <div class="table-area">
+        <div class="model-list-toolbar">
+          <div class="count-bar" id="m-count" role="status"></div>
+          <nav class="model-pagination" id="m-pages-top" aria-label="模型列表顶部翻页"></nav>
+        </div>
+        <div class="model-table-scroll" tabindex="0" role="region" aria-label="模型列表，可横向滚动">
         <table class="mt" id="mt">
+          <colgroup><col style="width:29%"><col style="width:12%"><col style="width:14%"><col style="width:11%"><col style="width:10%"><col style="width:12%"><col style="width:12%"></colgroup>
           <thead><tr>
             <th data-sort="name">名称</th>
             <th data-sort="type">类型</th>
@@ -478,13 +496,15 @@
           </tr></thead>
           <tbody id="mt-body"></tbody>
         </table>
+        </div>
+        <nav class="model-pagination" id="m-pages-bottom" aria-label="模型列表底部翻页"></nav>
       </div>
     </div>
   </div>
 
   <!-- ── 待审核 ── -->
   <div class="view" id="view-pending">
-    <div class="brief-heading"><div><h1>模型审核</h1><p>资料 Agent 联网核对模型、补充信息并入库。闭源模型只要确认存在也会收录。</p></div>
+    <div class="brief-heading"><div><h1>模型审核</h1><p>Models Table 每天 10 点自动同步；表外模型从新闻发现并补查。这里也可手动核对、补充资料。</p></div>
       <div class="action-row"><button class="btn btn-approve" id="review-models" onclick="runModelReview()">运行资料 Agent</button>
       <button class="btn btn-reject" id="enrich-models" onclick="runModelReview(null, true)">补查已入库模型</button></div>
     </div>
@@ -494,29 +514,43 @@
     <div id="pending-list"></div>
   </div>
 
+  <div class="view" id="view-login">
+    <form id="admin-login-form" class="admin-login">
+      <h1>管理员登录</h1><p>管理采集源、任务和模型审核。</p>
+      <label for="admin-password">管理员密码</label>
+      <input id="admin-password" type="password" autocomplete="current-password" required maxlength="256">
+      <button class="btn btn-approve" type="submit">登录</button>
+      <p id="admin-login-message" role="status"></p>
+    </form>
+  </div>
+
   <div class="view" id="view-manage">
     <div class="brief-heading">
-      <div><h1>内容更新</h1><p>检查文章处理进度，补齐尚未完成的内容。</p></div>
+      <div><h1>运行管理</h1><p>每天上午 10 点自动更新。失败的步骤保留记录并按计划重试。</p></div>
       <button class="btn btn-reject" id="organize-button">更新文章</button>
     </div>
     <div class="brief-status" id="insight-status" aria-live="polite">正在读取更新状态…</div>
+    <p id="admin-message" role="status"></p>
+    <div id="admin-overview"></div>
   </div>
 </div>
 
-<footer class="site-footer"><div><strong>AI 情报</strong><span>模型 · 工程 · 行业</span></div><a href="#manage">内容管理</a></footer>
+<footer class="site-footer"><div><strong>AI 情报</strong><span>模型 · 工程 · 行业</span></div><div><a href="#" id="pet-reopen">AI 助手</a> · <a href="#manage">管理员入口</a></div></footer>
 
 <script>
 const API = "";
 let modelSort = "release_date";
+const MODEL_PAGE_SIZE = 20;
+let modelPage = 1, modelRequest = 0;
 let feedTimer = null, modelTimer = null;
 let activeView = "", feedScroll = 0, feedLoaded = false;
 let insightPage = 1, insightTimer = null, insightRequest = 0, statusTimer = null;
 let insightReady = false, insightScroll = 0, currentInsight = null, articleParent = "#sources";
 let sourceFiltersReady = false, modelFiltersReady = false;
-let reviewTimer = null, reviewRequest = 0;
+let reviewTimer = null, reviewRequest = 0, routeVersion = 0;
 
 // ── routing ──────────────────────────────────────────────
-function route(view) {
+async function route(view) {
   if (view && location.hash !== "#" + view) { location.hash = view; return; }
   view = view || location.hash.replace(/^#\/?/, "") || "feed";
   const articleMatch = view.match(/^article\/(\d+)(?:\/(article-section-\d+))?$/);
@@ -525,7 +559,10 @@ function route(view) {
   if (articleMatch) view = "article";
   else if (insightMatch) view = "insight";
   else if (modelMatch) view = "model";
-  else if (!["feed","sources","models","pending","manage"].includes(view)) view = "feed";
+  else if (!["feed","sources","models","pending","manage","login"].includes(view)) view = "feed";
+  const version = ++routeVersion;
+  if (["manage", "pending"].includes(view) && !await ensureAdmin(view)) view = "login";
+  if (version !== routeVersion) return;
   const previousView = activeView;
   if (previousView === "sources") feedScroll = window.scrollY;
   if (previousView === "feed") insightScroll = window.scrollY;
@@ -533,6 +570,7 @@ function route(view) {
   activeView = view;
   if (view !== "manage") clearTimeout(statusTimer);
   if (view !== "pending") clearTimeout(reviewTimer);
+  if (view !== "manage") clearTimeout(adminTimer);
   const managing = ["manage", "pending", "sources"].includes(view);
   document.getElementById("management-nav").hidden = !managing;
   document.querySelectorAll("[data-manage]").forEach(link => {
@@ -544,7 +582,7 @@ function route(view) {
   document.querySelectorAll(".nav-link").forEach(b =>
     b.classList.toggle("active", b.dataset.view === (view === "article" ? "sources" : view === "insight" ? "feed" : view === "model" ? "models" : view))
   );
-  document.title = ({feed:"每日资讯", models:"模型库", sources:"原文档案", pending:"模型审核", manage:"内容更新"}[view] || "文章") + " · AI 情报";
+  document.title = ({feed:"每日资讯", models:"模型库", sources:"原文档案", pending:"模型审核", manage:"运行管理", login:"管理员登录"}[view] || "文章") + " · AI 情报";
   if (view === "article") {
     const back = document.getElementById("article-back");
     back.href = articleParent; back.textContent = articleParent.startsWith("#insight/") ? "← 返回文章" : "← 返回原文档案";
@@ -566,6 +604,7 @@ function route(view) {
   else if (view === "manage") {
     window.scrollTo(0, 0); loadPendingBadge();
     loadInsightStatus().catch(() => { document.getElementById("insight-status").textContent = "更新状态暂时无法读取，请稍后重试。"; });
+    loadAdminOverview();
   }
 }
 window.addEventListener("hashchange", () => route());
@@ -625,7 +664,7 @@ async function loadArchive() {
   if (cat) p.set("category", cat);
   if (src) p.set("source", src);
   try {
-    const data = await fetch(`${API}/api/articles?${p}`).then(r=>r.json());
+    const data = await apiFetch(`${API}/api/articles?${p}`).then(r=>r.json());
     feedLoaded = true;
     bar.textContent = `共 ${data.total} 条`;
     if (!data.items.length) {
@@ -661,7 +700,7 @@ async function loadArticle(id, section) {
   const detail = document.getElementById("article-detail");
   detail.innerHTML = `<div class="loading"><div class="spinner"></div>正在打开正文…</div>`;
   try {
-    const response = await fetch(`${API}/api/articles/${id}`);
+    const response = await apiFetch(`${API}/api/articles/${id}`);
     if (!response.ok) throw new Error(response.status === 404 ? "这条情报不存在" : "正文加载失败，请稍后重试");
     const article = await response.json();
     if (activeView !== "article" || location.hash.split("/")[1] !== id) return;
@@ -735,7 +774,7 @@ async function loadSources() {
   if (sourceFiltersReady) return;
   sourceFiltersReady = true;
   try {
-    const data = await fetch(`${API}/api/articles/sources`).then(r=>r.json());
+    const data = await apiFetch(`${API}/api/articles/sources`).then(r=>r.json());
     const sel = document.getElementById("feed-src");
     data.forEach(s => {
       const o = document.createElement("option");
@@ -750,7 +789,7 @@ async function loadModelFilters() {
   if (modelFiltersReady) return;
   modelFiltersReady = true;
   try {
-    const data = await fetch(`${API}/api/models/filters`).then(r=>r.json());
+    const data = await apiFetch(`${API}/api/models/filters`).then(r=>r.json());
     fill("m-type", data.types);
     fill("m-org", data.organizations);
     fill("m-lic", data.licenses);
@@ -764,11 +803,23 @@ function fill(id, vals) {
   });
 }
 
-async function loadModels() {
+function renderModelPages(total = 0) {
+  const pages = Math.ceil(total / MODEL_PAGE_SIZE);
+  const button = (page, label, disabled) => `<button class="btn btn-reject" data-model-page="${page}" ${disabled ? "disabled" : ""}>${label}</button>`;
+  const html = pages > 1 ? `${button(1, "首页", modelPage === 1)}${button(modelPage - 1, "上一页", modelPage === 1)}<span>第 ${modelPage} / ${pages} 页</span>${button(modelPage + 1, "下一页", modelPage === pages)}${button(pages, "末页", modelPage === pages)}` : "";
+  for (const id of ["m-pages-top", "m-pages-bottom"]) document.getElementById(id).innerHTML = html;
+}
+
+async function loadModels(page = modelPage) {
+  clearTimeout(modelTimer);
+  modelPage = page;
+  const request = ++modelRequest;
   const body = document.getElementById("mt-body");
   const bar = document.getElementById("m-count");
+  bar.textContent = "正在加载模型…";
+  renderModelPages();
   body.innerHTML = `<tr><td colspan="7"><div class="loading"><div class="spinner"></div>加载中…</div></td></tr>`;
-  const p = new URLSearchParams({page:1, page_size:200, sort: modelSort});
+  const p = new URLSearchParams({page, page_size:MODEL_PAGE_SIZE, sort: modelSort});
   const t = document.getElementById("m-type").value;
   const o = document.getElementById("m-org").value;
   const lic = document.getElementById("m-lic").value;
@@ -786,8 +837,14 @@ async function loadModels() {
   if (lang) p.set("language", lang);
   if (q) p.set("q", q);
   try {
-    const data = await fetch(`${API}/api/models?${p}`).then(r=>r.json());
-    bar.textContent = `共 ${data.total} 个模型`;
+    const response = await apiFetch(`${API}/api/models?${p}`);
+    if (!response.ok) throw new Error("模型列表暂时不可用，请重试");
+    const data = await response.json();
+    if (request !== modelRequest || activeView !== "models") return;
+    const lastPage = Math.max(1, Math.ceil(data.total / MODEL_PAGE_SIZE));
+    if (page > lastPage) return loadModels(lastPage);
+    bar.textContent = data.total ? `共 ${data.total} 个模型 · 第 ${(page - 1) * MODEL_PAGE_SIZE + 1}–${(page - 1) * MODEL_PAGE_SIZE + data.items.length} 个` : "共 0 个模型";
+    renderModelPages(data.total);
     if (!data.items.length) {
       body.innerHTML = `<tr><td colspan="7"><div class="empty">没有匹配的模型</div></td></tr>`;
       return;
@@ -795,18 +852,21 @@ async function loadModels() {
     body.innerHTML = data.items.map(m => `
       <tr>
         <td>
-          <a class="model-name-link" href="#model/${m.id}"><strong>${esc(m.name)}</strong> <span aria-hidden="true">↗</span></a>
-          ${m.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(m.notes)}</div>` : ""}
+          <a class="model-name-link" href="#model/${m.id}" title="${esc(m.name)}"><strong>${esc(m.name)}</strong> <span aria-hidden="true">↗</span></a>
+          <div class="model-summary">${esc(m.notes)}</div>
         </td>
-        <td><span class="type-tag t-${m.type}">${m.type}</span></td>
-        <td>${esc(m.organization||"—")}</td>
+        <td><span class="model-cell-text"><span class="type-tag t-${esc(m.type)}">${esc(m.type)}</span></span></td>
+        <td><span class="model-cell-text" title="${esc(m.organization)}">${esc(m.organization||"—")}</span></td>
         <td class="num-cell">${fmtB(m.params_b)}</td>
         <td class="num-cell">${fmtCtx(m.context_length)}</td>
-        <td style="font-size:13px">${esc(m.license||"—")}</td>
+        <td style="font-size:13px"><span class="model-cell-text" title="${esc(m.license)}">${esc(m.license||"—")}</span></td>
         <td style="font-size:13px;white-space:nowrap">${m.release_precision === "month" && m.release_date ? esc(m.release_date.slice(0,7).replace("-","/")) : fmtDate(m.release_date)}</td>
       </tr>`).join("");
   } catch(e) {
-    body.innerHTML = `<tr><td colspan="7"><div class="empty">加载失败：${esc(e.message)}</div></td></tr>`;
+    if (request !== modelRequest || activeView !== "models") return;
+    bar.textContent = "模型加载失败";
+    renderModelPages();
+    body.innerHTML = `<tr><td colspan="7"><div class="empty">加载失败：${esc(e.message)} <button class="btn btn-reject" onclick="loadModels()">重试</button></div></td></tr>`;
   }
 }
 
@@ -819,7 +879,7 @@ async function loadPending(quiet = false) {
   if (!quiet) list.innerHTML = `<div class="loading"><div class="spinner"></div>加载中…</div>`;
   try {
     const filter = document.getElementById("review-filter").value;
-    const data = await fetch(`${API}/api/pending?status=${filter}`).then(r=>r.json());
+    const data = await apiFetch(`${API}/api/pending?status=${filter}`).then(r=>r.json());
     if (request !== reviewRequest) return;
     const cnt = data.count || 0;
     const counts = data.counts || {};
@@ -878,8 +938,9 @@ function renderPendingCard(item) {
     </div>` : ""}
     ${d.notes ? `<p class="analysis-note">${esc(d.notes)}</p>` : ""}
     ${item.review_reason ? `<p class="analysis-note"><strong>${item.reviewer === "manual" ? "人工处理" : "DeepSeek 判断"}</strong>：${esc(item.review_reason)}</p>` : ""}
+    ${item.maintenance ? `<p class="analysis-note">处理结果：${esc({created:"新建模型档案",updated:"更新已有模型",linked:"关联已有模型"}[item.maintenance.action] || item.maintenance.action)}${item.maintenance.fields.length ? " · 更新 " + item.maintenance.fields.length + " 个字段" : ""} · 识别 ${item.maintenance.events} 项进展</p>` : ""}
     ${item.research?.status ? `<p class="analysis-note">${item.research.status === "complete" ? `已检索 ${item.research.source_count} 份资料` : "联网补查未完成"}${item.research.fields?.length ? " · 已补充：" + item.research.fields.map(k => ({organization:"机构",params_b:"参数量",context_length:"上下文",license:"许可证",languages:"语言",modality_in:"输入模态",modality_out:"输出模态",release_date:"发布日期"}[k] || k)).map(esc).join("、") : ""}${item.research.unresolved?.length ? " · " + esc(item.research.unresolved.join("；")) : ""}</p>` : ""}
-    ${item.task ? `<p class="analysis-note">任务：${esc({queued:"排队中",running:item.task.stage === "decision" ? "判断入库（资料已保存）" : "搜索资料",retry:"稍后自动重试",done:"已完成",failed:"失败，可重新运行"}[item.task.status] || item.task.status)}${item.task.error ? " · " + esc(item.task.error) : ""}</p>` : ""}
+    ${item.task ? `<p class="analysis-note">任务：${esc({queued:"排队中",running:item.task.stage === "decision" ? "判断入库（资料已保存）" : "查库与核对资料",retry:"稍后自动重试",blocked:"等待补查服务恢复",done:"已完成",failed:"失败，可重新运行"}[item.task.status] || item.task.status)}${item.task.error ? " · " + esc(item.task.error) : ""}</p>` : ""}
     <button class="btn btn-reject" onclick="runModelReview(${item.id})">联网补查${item.status === "draft" ? "并复核" : "资料"}</button>
     ${item.status === "draft" ? `<div class="action-row">
       <button class="btn btn-approve" onclick="approve(${item.id})">✓ 确认入库</button>
@@ -890,21 +951,21 @@ function renderPendingCard(item) {
 
 async function approve(id) {
   try {
-    const response = await fetch(`${API}/api/pending/${id}/approve`, {method:"POST"});
+    const response = await apiFetch(`${API}/api/pending/${id}/approve`, {method:"POST"});
     if (!response.ok) throw new Error((await response.json()).detail);
     loadPending(true);
   } catch(e) { alert("操作失败: " + e.message); }
 }
 async function reject(id) {
   try {
-    const response = await fetch(`${API}/api/pending/${id}/reject`, {method:"POST"});
+    const response = await apiFetch(`${API}/api/pending/${id}/reject`, {method:"POST"});
     if (!response.ok) throw new Error((await response.json()).detail);
     loadPending(true);
   } catch(e) { alert("操作失败: " + e.message); }
 }
 async function loadPendingBadge() {
   try {
-    const data = await fetch(`${API}/api/pending`).then(r=>r.json());
+    const data = await apiFetch(`${API}/api/pending`).then(r=>r.json());
     const badge = document.getElementById("pending-count");
     const cnt = data.count || 0;
     if (cnt > 0) { badge.textContent = cnt; badge.style.display = "inline"; }
@@ -918,7 +979,7 @@ async function runModelReview(id = null, existing = false) {
   button.textContent = "提交中…";
   try {
     const path = existing ? "enrich" : "review" + (id ? "?pending_id=" + id : "");
-    const response = await fetch(`${API}/api/pending/${path}`, {method:"POST"});
+    const response = await apiFetch(`${API}/api/pending/${path}`, {method:"POST"});
     if (!response.ok) throw new Error("审核任务启动失败");
     await loadPending(true);
   } catch(e) { button.disabled = false; button.textContent = "运行资料 Agent"; alert(e.message); }
@@ -936,16 +997,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
   ["m-type","m-org","m-lic","m-pmin","m-pmax","m-ctx","m-lang","m-q"].forEach(id => {
     const el = document.getElementById(id);
-    el.addEventListener("input", () => { clearTimeout(modelTimer); modelTimer = setTimeout(loadModels, 300); });
-    el.addEventListener("change", loadModels);
+    if (el.tagName === "SELECT") el.addEventListener("change", () => loadModels(1));
+    else el.addEventListener("input", () => {
+      clearTimeout(modelTimer);
+      ++modelRequest;
+      modelPage = 1;
+      renderModelPages();
+      modelTimer = setTimeout(() => loadModels(1), 300);
+    });
   });
 
   document.querySelectorAll("#mt th[data-sort]").forEach(th => {
-    th.addEventListener("click", () => { modelSort = th.dataset.sort; loadModels(); });
+    th.addEventListener("click", () => { modelSort = th.dataset.sort; loadModels(1); });
+  });
+  ["m-pages-top", "m-pages-bottom"].forEach(id => {
+    document.getElementById(id).addEventListener("click", event => {
+      const button = event.target.closest("button[data-model-page]");
+      if (!button || button.disabled) return;
+      loadModels(Number(button.dataset.modelPage));
+      window.scrollTo(0, 0);
+    });
   });
 });
 </script>
 <script src="/static/insights.js?v=cover-fallback-20261023"></script>
 <script src="/static/models.js?v=model-profile-20261022"></script>
+<script src="/static/admin.js?v=20261029-models"></script>
+<link rel="stylesheet" href="/static/admin.css?v=20261027">
+<link rel="stylesheet" href="/static/pet.css?v=20261029-video1">
+<script src="/static/pet-video.js?v=20261029-idle1"></script>
+<script src="/static/pet-interaction.js?v=20261029-idle1"></script>
+<script src="/static/pet.js?v=20261029-idle1"></script>
 </body>
 </html>

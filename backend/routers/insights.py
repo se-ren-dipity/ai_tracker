@@ -2,11 +2,11 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from backend.collector.insight_agent import build_insights, load_profile, run_state
+from backend.collector.insight_agent import load_profile
 from backend.collector.insight_reader import reading_assets
 from backend.database import get_db
 from backend.models.article import Article
@@ -27,23 +27,35 @@ def source_refs(db, insight_id):
 
 @router.get("/status")
 def status(db: Session = Depends(get_db)):
+    from backend.collector.source_settings import source_overview
+    from backend.models.operations import CollectionRun
+    sources = source_overview(db)
+    sources = [row for row in sources if row["enabled"] and row.get("status")]
+    errors = [f"{row['name']}：{row['error']}" + ("（使用缓存）" if row['status'] == 'cached' else "")
+              for row in sources if row["status"] != "ok"]
+    current = db.query(CollectionRun).order_by(CollectionRun.id.desc()).first()
+    active = db.query(CollectionRun).filter(CollectionRun.status.in_(["queued", "running"])).first()
+    if current and current.error:
+        errors.append(current.error)
     counts = dict(db.query(SourceItem.status, func.count(SourceItem.id)).group_by(SourceItem.status).all())
     dates = [row[0] for row in db.query(func.date(SourceItem.published, "+8 hours")).distinct().order_by(func.date(SourceItem.published, "+8 hours").desc()).all() if row[0]]
     total = db.query(Insight).count()
     unwritten = db.query(Insight).filter(or_(Insight.body_paragraphs.is_(None), Insight.body_paragraphs == "[]")).count()
     articles = db.query(Article).count()
     prepared = db.query(SourceItem.article_id).distinct().count()
-    return {**run_state, "profile": load_profile(), "articles": articles,
+    return {"running": bool(active), "collection_run": current.to_dict() if current else None,
+            "last_error": "；".join(errors) or None, "collection_sources": sources,
+            "profile": load_profile(), "articles": articles,
             "source_items": sum(counts.values()), "insights": total, "counts": counts, "unwritten": unwritten,
             "merged": counts.get("analyzed", 0) - total, "unprepared_articles": articles - prepared,
             "dates": dates}
 
 
 @router.post("/refresh", status_code=202)
-def refresh(background: BackgroundTasks):
-    if not run_state["running"]:
-        background.add_task(build_insights)
-    return {"status": "processing"}
+def refresh(db: Session = Depends(get_db)):
+    from backend.collector.collection_jobs import enqueue
+    row = enqueue(db)
+    return {"status": row.status, "run_id": row.id}
 
 
 @router.get("/dates")

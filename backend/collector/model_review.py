@@ -15,6 +15,8 @@ from backend.models.article import Article
 from backend.models.insight import Insight, SourceItem
 from backend.models.model_db import AIModel
 from backend.models.pending import PendingModel
+from backend.registry import find_model, identity_matches, search_models, remember_alias, organization_key
+from backend.runtime import process_lock
 
 logger = logging.getLogger(__name__)
 review_lock = asyncio.Lock()
@@ -26,7 +28,7 @@ class Decision(BaseModel):
     item_id: int
     decision: Literal["approved", "deferred", "rejected"]
     reason: str = Field(min_length=2, max_length=500)
-    type: Literal["LLM", "VLM", "CodeLM", "MathLM", "TTS", "ASR", "VideoGen", "ImageGen", "Embedding", "Reranker", "Other", "Unknown"]
+    type: Literal["LLM", "VLM", "CodeLM", "MathLM", "Speech", "TTS", "ASR", "VideoGen", "ImageGen", "Embedding", "Reranker", "Other", "Unknown"]
     summary: str = Field(max_length=200)
     duplicate_of: int | None = None
 
@@ -38,8 +40,9 @@ approved：有可信公开资料证明具体模型确实存在；deferred：搜�
 可信 API 平台的明确模型页面及提供商文档是存在依据，不能仅因它以 API/服务形式提供就当作“不是模型”。
 缺少参数量、许可证、评测或上下文不妨碍收录，不能为填满字段编造信息。不要用自身知识推翻材料中的新版本或日期，不假装访问过链接。
 HF 同名仓库可能非官方，检查组织、模型名和原文是否对应；仅凭仓库搜索结果不能确认身份。
-已有模型的相同版本可 approved 且 duplicate_of 为该已有 ID，只建立关联；不同版本不能合并。
-type 按用途选择 LLM/VLM/CodeLM/MathLM/TTS/ASR/VideoGen/ImageGen/Embedding/Reranker/Other/Unknown。
+已有模型的相同版本可 approved 且 duplicate_of 为该已有 ID，由程序关联新闻并按证据补全档案、记录后续进展；开放权重或上线 API 不代表新版本。不同版本、参数尺寸、Base/Instruct 不能合并。名称相近只代表候选，别名需有 identity_links 中已验证的身份依据。
+type 按用途选择 LLM/VLM/CodeLM/MathLM/Speech/TTS/ASR/VideoGen/ImageGen/Embedding/Reranker/Other/Unknown。
+Speech=语音对话、语音到语音、同声传译等综合语音模型；TTS 仅用于文本到语音合成，ASR 仅用于识别/转写。翻译模型即使搭配独立 TTS 输出语音也归 Speech，不归 Other。支持图像或视频理解的通用模型归 VLM，而不是仅按输出文本归 LLM。用 research 中已验证的模态字段交叉检查类型。
 summary 用 40-100 字中文介绍模型的用途与特点，只写材料支持的内容。不写审核过程、待核实提示或来源介绍；不要复述未经证实的参数、日期或性能数字。保留时代与语言的准确含义，19 世纪英语不是“古英语”。
 只有链接而没有抓取的正文时，reason 写“资料列出官方链接”，不能称为已核实。HF 的 safetensors.total 是文件元素统计，不用于覆盖公开表的架构参数量。
 每个输入返回一项，严格 JSON：{"items":[{"item_id":1,"decision":"approved","reason":"判断理由","type":"LLM","summary":"模型简介","duplicate_of":null}]}。
@@ -77,10 +80,19 @@ async def judge_batch(items, existing):
 
 
 def find_existing(db, draft):
-    from backend.collector.insight_models import model_key
-    keys = {model_key(draft[k]) for k in ("name", "full_name") if draft.get(k)}
-    return next((m for m in db.query(AIModel).all()
-                 if keys & {model_key(v) for v in (m.name, m.full_name) if v}), None)
+    return find_model(db, draft)
+
+
+def consistent_type(proposed, draft):
+    def values(field):
+        value = draft.get(field) or []
+        return set(json.loads(value) if isinstance(value, str) else value)
+    inputs, outputs = values("modality_in"), values("modality_out")
+    if "audio" in inputs and ("audio" in outputs or proposed in {"TTS", "Other"}):
+        return "Speech"
+    if inputs & {"image", "video"} and proposed == "LLM":
+        return "VLM"
+    return proposed
 
 
 def promote(db, row, duplicate_of=None):
@@ -89,6 +101,8 @@ def promote(db, row, duplicate_of=None):
     model = db.get(AIModel, row.model_id) if row.model_id else None
     model = model or (db.get(AIModel, duplicate_of) if duplicate_of else None) or find_existing(db, draft)
     if model is None:
+        if len(identity_matches(db, draft)) > 1:
+            raise ValueError("存在多个同名模型，请先核对机构和具体版本")
         fields = {column.name for column in AIModel.__table__.columns} - {"id", "updated_at"}
         values = {key: value for key, value in draft.items() if key in fields}
         if not str(values.get("name", "")).strip():
@@ -109,6 +123,8 @@ def promote(db, row, duplicate_of=None):
         record_research(db, model, json.loads(row.evidence or "{}").get("research", {}))
         if model.type == "Unknown" and draft.get("type") != "Unknown":
             model.type = draft["type"]
+        if duplicate_of and any(link["model_id"] == model.id for link in json.loads(row.evidence or "{}").get("research", {}).get("identity_links", [])):
+            remember_alias(db, model, draft.get("name"))
     row.status, row.model_id = "approved", model.id
     for insight_id in json.loads(row.evidence or "{}").get("insight_ids", []):
         insight = db.get(Insight, insight_id)
@@ -126,7 +142,7 @@ def promote(db, row, duplicate_of=None):
 
 async def review_models(ids=None, retry=False, include_existing=False, task_id=None, owner=None):
     from backend.collector.model_jobs import assert_owner, checkpoint_task, finish_task
-    from backend.models.model_task import ModelInsight
+    from backend.models.model_task import ModelInsight, ModelTask
     async with review_lock:
         review_state.update(running=True, last_error=None, phase="准备资料", completed=0, total=0)
         counts = {"approved": 0, "deferred": 0, "rejected": 0, "failed": 0}
@@ -147,6 +163,7 @@ async def review_models(ids=None, retry=False, include_existing=False, task_id=N
                         if row.status != "draft" and not (include_existing and row.status == "approved"):
                             continue
                         evidence = json.loads(row.evidence or "{}")
+                        sources = []
                         if row.source_insight_id or evidence.get("insight_ids"):
                             insight_ids = set(evidence.get("insight_ids", [])) | ({row.source_insight_id} if row.source_insight_id else set())
                             sources = db.query(SourceItem).filter(SourceItem.insight_id.in_(insight_ids)).order_by(SourceItem.published.desc()).limit(8).all()
@@ -157,8 +174,14 @@ async def review_models(ids=None, retry=False, include_existing=False, task_id=N
                                 db.query(ModelInsight.insight_id).filter_by(model_id=row.model_id))).order_by(SourceItem.published.desc()).limit(8).all()
                             evidence["news"] = [source.body_text for source in related]
                             evidence["links"] = [link for source in related for link in json.loads(source.links or "[]")]
+                            sources = related
+                        evidence["news_sources"] = [{"url": article.url, "title": source.title, "content": source.body_text}
+                            for source in sources if (article := db.get(Article, source.article_id))]
+                        draft = json.loads(row.draft)
+                        evidence["registry_lookup"] = search_models(db, draft["name"], draft.get("organization"), include_pending=True)
+                        if row.model_id and row.model_id not in {m["id"] for m in evidence["registry_lookup"]["items"]}:
+                            evidence["registry_lookup"]["items"].append(db.get(AIModel, row.model_id).to_dict())
                         items.append({"item_id": row.id, "draft": json.loads(row.draft), "evidence": evidence})
-                    existing = [{"id": m.id, "name": m.name, "full_name": m.full_name, "organization": m.organization} for m in db.query(AIModel).all()]
                 if not items:
                     continue
                 try:
@@ -188,21 +211,52 @@ async def review_models(ids=None, retry=False, include_existing=False, task_id=N
                                 db.commit()
                         review_state["completed"] += 1
                     review_state.update(phase="判断入库", current_model=None)
+                    existing = list({model["id"]: model for item in items for model in
+                        item["evidence"]["registry_lookup"]["items"] + item["evidence"]["research"].get("registry_candidates", [])}.values())
                     decisions = await judge_batch(items, existing)
-                    with SessionLocal() as db:
+                    with process_lock("registry-write", wait=True), SessionLocal() as db:
                         if task_id:
                             assert_owner(db, task_id, owner)
                         for decision in decisions:
                             row = db.get(PendingModel, decision.item_id)
+                            if task_id and row.reviewer == "manual" and row.reviewed_at and row.reviewed_at >= db.get(ModelTask, task_id).started_at:
+                                continue
                             if row.status != "draft" and not (include_existing and row.status == "approved"):
                                 continue
                             draft = json.loads(row.draft)
-                            draft.update(type=decision.type, notes=decision.summary)
+                            research = json.loads(row.evidence or "{}").get("research", {})
+                            if decision.decision == "approved" and not row.model_id and not research.get("identity"):
+                                decision.decision = "deferred"
+                                decision.reason = "未取得包含具体模型名称、可定位于页面正文的身份引用，保留资料等待补查。"
+                            matches = identity_matches(db, draft)
+                            allowed = {m["id"] for m in matches} | {link["model_id"] for link in research.get("identity_links", [])}
+                            if row.model_id:
+                                allowed.add(row.model_id)
+                            if decision.decision == "approved" and ((decision.duplicate_of is not None and decision.duplicate_of not in allowed)
+                                    or (not row.model_id and len(matches) > 1)):
+                                decision.decision, decision.reason = "deferred", "模型身份存在歧义或别名证据不足，保留候选等待复核。"
+                            if row.model_id:
+                                model = db.get(AIModel, row.model_id)
+                                if decision.duplicate_of is not None and decision.duplicate_of != row.model_id:
+                                    decision.decision, decision.reason = "deferred", "候选身份与正在维护的档案不同，需要复核后再关联。"
+                                if model.organization and any(item["field"] == "organization" and
+                                        organization_key(item["value"]) != organization_key(model.organization) for item in research.get("updates", [])):
+                                    decision.decision, decision.reason = "deferred", "报道中的机构与现有档案不同，需确认是否为同名模型。"
+                            draft.update(type=consistent_type(decision.type, draft), notes=decision.summary)
                             row.draft = json.dumps(draft, ensure_ascii=False)
                             row.review_decision, row.review_reason = decision.decision, decision.reason
                             row.reviewer, row.reviewed_at = DEEPSEEK_MODEL, datetime.utcnow()
                             if decision.decision == "approved":
-                                promote(db, row, decision.duplicate_of)
+                                previous = db.get(AIModel, row.model_id or decision.duplicate_of) if row.model_id or decision.duplicate_of else find_existing(db, draft)
+                                before = previous.to_dict() if previous else None
+                                model = promote(db, row, decision.duplicate_of)
+                                after = model.to_dict()
+                                fields = [field for field in (before or {}) if field not in {"updated_at", "last_checked_at", "next_review_at", "field_states"} and before[field] != after[field]]
+                                evidence = json.loads(row.evidence or "{}")
+                                evidence["maintenance"] = {"action": "created" if before is None else "updated" if fields else "linked",
+                                    "model_id": model.id, "fields": fields, "events": len(research.get("events", [])),
+                                    "tool_calls": len(research.get("tool_trace", []))}
+                                row.evidence = json.dumps(evidence, ensure_ascii=False)
                             elif row.model_id:
                                 # An inconclusive recheck must not create an immediate retry loop.
                                 model = db.get(AIModel, row.model_id)

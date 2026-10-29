@@ -1,13 +1,9 @@
 """FastAPI application entry point — personal AI information tracker."""
 import logging
 import os
-import subprocess
-import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -20,17 +16,11 @@ logging.basicConfig(
 
 from backend.database import init_db
 from backend.routers import articles, models as models_router, pending as pending_router
-from backend.routers import insights
+from backend.routers import insights, admin, assistant
+from backend.admin_auth import admin_guard, router as auth_router
 
 app = FastAPI(title="AI Tracker", version="0.3.0")
-model_worker = None
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.middleware("http")(admin_guard)
 
 @app.middleware("http")
 async def revalidate_frontend(request, call_next):
@@ -45,6 +35,9 @@ app.include_router(articles.router)
 app.include_router(models_router.router)
 app.include_router(pending_router.router)
 app.include_router(insights.router)
+app.include_router(auth_router)
+app.include_router(admin.router)
+app.include_router(assistant.router)
 
 
 @app.on_event("startup")
@@ -63,27 +56,20 @@ async def startup():
     from backend.collector.model_profiles import bootstrap_profiles
     with SessionLocal() as db:
         bootstrap_profiles(db)
-
-    if os.getenv("DEEPSEEK_API_KEY"):
-        from backend.collector.scheduler import start_scheduler
-        start_scheduler()
-        global model_worker
-        root = Path(__file__).resolve().parent.parent
-        with (root / "data" / "model-worker.log").open("a", encoding="utf-8") as log:
-            model_worker = subprocess.Popen([sys.executable, "-X", "utf8", "-B", "-m", "backend.collector.model_worker"],
-                cwd=root, stdout=log, stderr=log,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-    else:
-        logging.getLogger(__name__).warning(
-            "DEEPSEEK_API_KEY not set — scheduler disabled."
-        )
+    await assistant.start()
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    if model_worker and model_worker.poll() is None:
-        model_worker.terminate()
-        # The next worker resumes persisted checkpoints after the lease expires.
+    await assistant.stop()
+
+@app.get("/health/ready", include_in_schema=False)
+def ready():
+    from sqlalchemy import text
+    from backend.database import SessionLocal
+    with SessionLocal() as db:
+        db.execute(text("SELECT 1"))
+    return {"status": "ok"}
 
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")

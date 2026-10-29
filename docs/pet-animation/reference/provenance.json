@@ -1,0 +1,19 @@
+{
+  "source": "frontend/assets/pet/tuntun-cool.svg",
+  "sha256": "36e272567dafbfb52fd2adc283658f3f875663ed150df5219d2103f248f35c30",
+  "method": "Original SVG paths rendered on a uniform green canvas with sharp/libvips; no generative redraw.",
+  "width": 1920,
+  "height": 1080,
+  "green": "#00FF00",
+  "source_bounds": {
+    "left": 77,
+    "top": 34.5,
+    "right": 580,
+    "bottom": 596.5
+  },
+  "scale": 1.2491103202846976,
+  "translate": [
+    549.6672597864768,
+    172.90569395017792
+  ]
+}

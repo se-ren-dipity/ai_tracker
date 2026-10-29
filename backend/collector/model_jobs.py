@@ -1,5 +1,6 @@
 """SQLite-backed queue. A lease fences stale workers; research is checkpointed."""
 import json
+import os
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, update, func, case
@@ -8,6 +9,7 @@ from sqlalchemy.dialects.sqlite import insert
 from backend.models.model_db import AIModel
 from backend.models.model_task import ModelTask
 from backend.models.pending import PendingModel
+from backend.models.model_table import ModelTableEntry
 
 LEASE_SECONDS = 90
 MAX_ATTEMPTS = 3
@@ -23,6 +25,8 @@ def enqueue(db, pending_id, reason="手动复查", priority=20, force=True):
                .on_conflict_do_nothing(index_elements=["pending_id"]))
     task = db.query(ModelTask).filter_by(pending_id=pending_id).one()
     if task.status in ("queued", "retry", "running"):
+        if reason == "手动复查":
+            task.reason = reason
         if reason == "相关报道更新":
             task.requested_at = now
         task.priority = max(task.priority, priority)
@@ -34,7 +38,22 @@ def enqueue(db, pending_id, reason="手动复查", priority=20, force=True):
     return task
 
 
+def pause_automatic_tasks(db, now=None):
+    if os.getenv("MODEL_AUTO_REVIEW_ENABLED", "false").lower() == "true":
+        return
+    now = now or datetime.utcnow()
+    available = or_(ModelTask.status.in_(["queued", "retry", "blocked"]),
+                    and_(ModelTask.status == "running", ModelTask.lease_until <= now))
+    for task in db.query(ModelTask).filter(available):
+        if task.reason != "手动复查":
+            task.status, task.error = "paused", "自动全量补查已停用，改为新闻增量收录；需要时可手动补查。"
+            task.owner = task.lease_until = None
+    db.commit()
+
+
 def enqueue_due(db, now=None):
+    if os.getenv("MODEL_AUTO_REVIEW_ENABLED", "false").lower() != "true":
+        return
     from backend.collector.model_review import queue_existing_models
     now = now or datetime.utcnow()
     for row in db.query(PendingModel).filter_by(status="draft").all():
@@ -42,7 +61,9 @@ def enqueue_due(db, now=None):
         due = row.reviewed_at is None or row.reviewed_at + timedelta(days=7) <= now
         if due and (task is None or task.status == "done"):
             enqueue(db, row.id, "待确认模型复查", 0)
-    for model in db.query(AIModel).filter(or_(AIModel.next_review_at.is_(None), AIModel.next_review_at <= now)).all():
+    for model in db.query(AIModel).filter(
+            AIModel.id.notin_(db.query(ModelTableEntry.model_id)),
+            or_(AIModel.next_review_at.is_(None), AIModel.next_review_at <= now)).all():
         row = db.query(PendingModel).filter_by(model_id=model.id, status="approved").order_by(PendingModel.id.desc()).first()
         task = db.query(ModelTask).filter_by(pending_id=row.id).first() if row else None
         if task and task.status != "done":
@@ -112,13 +133,20 @@ def fail_task(db, task_id, owner, error):
     task.error = f"处理失败（{type(error).__name__}）"
     task.status = "failed" if task.attempts >= MAX_ATTEMPTS else "retry"
     task.next_run_at = datetime.utcnow() + timedelta(minutes=2 ** task.attempts)
+    from backend.collector.source_health import ServiceBlocked, block_research
+    if not isinstance(error, ServiceBlocked) and getattr(error, "status_code", None) in {401, 402, 403, 429}:
+        error = ServiceBlocked(block_research(error))
+    if isinstance(error, ServiceBlocked):
+        task.status, task.error = "blocked", str(error)
+        task.attempts = max(0, task.attempts - 1)
+        task.next_run_at = datetime.fromisoformat(error.record["next_retry_at"]).replace(tzinfo=None)
     task.owner = task.lease_until = None
     db.commit()
 
 
 def task_status(db):
     rows = db.query(ModelTask).all()
-    counts = {status: sum(row.status == status for row in rows) for status in ("queued", "running", "retry", "done", "failed")}
+    counts = {status: sum(row.status == status for row in rows) for status in ("queued", "running", "retry", "blocked", "paused", "done", "failed")}
     current = next((row for row in rows if row.status == "running"), None)
     pending = db.get(PendingModel, current.pending_id) if current else None
     failed = next((row for row in reversed(rows) if row.status == "failed"), None)

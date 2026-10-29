@@ -9,6 +9,7 @@
 
 # Generated content, databases, backups and logs
 /data/
+/output/
 *.db
 *.db-*
 *.sqlite

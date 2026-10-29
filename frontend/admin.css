@@ -1,0 +1,23 @@
+.admin-login { max-width: 420px; margin: 60px auto; display: grid; gap: 18px; }
+.admin-login input { padding: 12px; border: 1px solid var(--border); border-radius: 6px; font: inherit; color: var(--text); background: var(--surface); }
+.admin-login p { margin: 0; }
+.admin-section { margin-top: 28px; padding: 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.admin-section h2 { margin: 0 0 12px; font-size: 20px; }
+.admin-section p, .admin-section small { color: var(--muted); line-height: 1.7; }
+.admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.admin-card { padding: 16px; background: var(--surface-2); border-radius: 6px; }
+.admin-card small, .admin-source small { display: block; margin-top: 8px; }
+.admin-state { display: inline-block; margin-left: 12px; font-size: 13px; }
+.admin-source { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border); }
+.admin-run { padding: 16px 0; border-top: 1px solid var(--border); }
+.admin-run summary { cursor: pointer; line-height: 1.8; }
+.admin-run summary span { margin-left: 20px; }
+.admin-run ul, #admin-events ul { line-height: 1.9; overflow-wrap: anywhere; }
+.admin-section .admin-warning, .is-warning { color: #9f501d; }
+@media (prefers-color-scheme: dark) { .admin-section .admin-warning, .is-warning { color: #f3ae7e; } }
+#admin-message { min-height: 1.5em; }
+@media (max-width: 700px) { .admin-grid { grid-template-columns: 1fr; } .admin-section { padding: 16px; } .admin-run summary span { display: block; margin-left: 16px; } }
+.assistant-admin-form > label { display: inline-block; margin: 16px 20px 16px 0; }
+.assistant-admin-form .admin-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.assistant-admin-form input[type="number"] { width: 100%; max-width: 220px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); }
+.assistant-admin-message { font-size: 12px; color: var(--muted); }

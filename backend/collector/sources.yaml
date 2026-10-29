@@ -10,3 +10,11 @@ sources:
   - name: AIHOT 行业
     url: https://aihot.news/feed/full/category/industry.xml
     type: rss
+
+  - name: 新智元
+    url: https://wechat2rss.bestblogs.dev/feed/e531a18b21c34cf787b83ab444eef659d7a980de.xml
+    type: rss
+
+  - name: 机器之心
+    url: https://wechat2rss.bestblogs.dev/feed/8d97af31b0de9e48da74558af128a4673d78c9a3.xml
+    type: rss

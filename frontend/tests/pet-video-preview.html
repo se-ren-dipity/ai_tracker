@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>囤囤 · 视频验收</title><link rel="stylesheet" href="/static/pet.css?v=20261029-video1">
+<style>
+  body { --surface:#111722; --text:#d9e1ed; --border:#334052; --muted:#9faabd; --accent:#8badd8; background:var(--surface); color:var(--text); font:16px system-ui; padding:32px; }
+  button, select { margin:4px; padding:8px 12px; }
+  #stage { height:240px; display:grid; place-items:center; margin:24px 0; border:1px solid var(--border); }
+  #stage.light { background:#fff; } #stage.checker { background:repeating-conic-gradient(#ddd 0% 25%,#fff 0% 50%) 0/24px 24px; }
+  .pet-root { position:relative; inset:auto; width:120px; } .pet-art,.pet-art img { width:100%; height:100%; } .pet-art { aspect-ratio:1; }
+</style>
+<h1>囤囤 · 视频验收</h1><p>使用网站同一播放器与素材。这里只切换视觉状态，不发送问答或消耗额度。</p>
+<div id="actions"><button data-state="idle">自动待机队列</button><button data-state="thinking">开始思考</button><button data-state="searching">检索</button><button data-state="composing">整理回答</button><button data-clip="pat">摸头</button><button data-state="done">完成后回待机</button><button data-state="waiting">待补充</button><button data-state="error">错误反馈</button><button data-hide>隐藏 / 恢复</button>
+<br><button data-clip="idle_guard">护宝</button><button data-clip="idle_drum">敲鼓</button><button data-clip="idle_listen">侧耳听</button><button data-clip="idle_sneeze">忍喷嚏</button><button data-clip="peek">躲猫猫</button><button data-clip="nap">打盹</button></div>
+<p>自动队列：基础待机一轮约 10 秒 → 随机小表演 → 基础待机；六段每轮不重复。工作状态优先。</p>
+<label>背景 <select id="background"><option value="">深色</option><option value="light">白色</option><option value="checker">棋盘</option></select></label>
+<label>尺寸 <select id="size"><option>120</option><option>78</option><option>256</option></select> px</label>
+<div id="stage"><div class="pet-root" data-state="idle"><div class="pet-dock"><span class="pet-art"><span class="pet-vector"><img src="/static/assets/pet/tuntun-cool.svg" alt="囤囤"></span></span></div></div></div>
+<p id="status" role="status"></p><script src="/static/pet-video.js?v=20261029-idle1"></script>
+<script>
+const root=document.querySelector('.pet-root'), media=mountPetVideo(root), dock=root.querySelector('.pet-dock');
+document.querySelector('#actions').onclick=event=>{
+  if(event.target.dataset.state){root.dataset.state=event.target.dataset.state;media.setState(root.dataset.state);if(root.dataset.state==='idle')media.react(null);}
+  if(event.target.dataset.clip)media.react(event.target.dataset.clip);
+  if(event.target.hasAttribute('data-hide')){dock.hidden=!dock.hidden;media.setVisible(!dock.hidden);}
+};
+document.querySelector('#background').onchange=event=>document.querySelector('#stage').className=event.target.value;
+document.querySelector('#size').onchange=event=>root.style.width=event.target.value+'px';
+setInterval(()=>{const video=root.querySelector('video');document.querySelector('#status').textContent=
+  '状态：'+root.dataset.state+' · '+(video ? video.currentSrc.split('/').pop()+' · '+video.currentTime.toFixed(1)+' 秒 · '+(video.paused?'暂停':'播放') : 'SVG')+
+  ' · '+(root.classList.contains('pet-video-active')?'透明视频已启用':'SVG 可见');},250);
+</script></html>

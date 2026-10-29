@@ -2,11 +2,11 @@
 let modelDetailRequest = 0;
 const modelFieldLabels = {params_b:"参数量", context_length:"上下文", license:"许可证", organization:"开发机构", languages:"支持语言", modality_in:"输入", modality_out:"输出", release_date:"发布日期", announced_date:"公布日期", available_date:"开放日期", weight_access:"模型权重", api_availability:"API 服务"};
 const modelValueLabels = {open:"开放权重", closed:"闭源", available:"已开放", preview:"预览开放", unavailable:"尚未开放", discontinued:"已停止服务", text:"文本", image:"图像", audio:"音频", video:"视频", zh:"中文", en:"英语"};
-function modelValue(field, value) {
+function modelValue(field, value, precision) {
   if (value == null || value === "unknown" || value === "" || Array.isArray(value) && !value.length) return "暂无资料";
   if (field === "params_b") return `${Number(value).toLocaleString("zh-CN", {maximumFractionDigits:2})}B`;
   if (field === "context_length") return `${value >= 1000000 ? Number((value / 1000000).toFixed(2)) + "M" : value >= 1000 ? Number((value / 1000).toFixed(2)) + "K" : value} tokens`;
-  if (field.endsWith("_date")) return fmtDate(value);
+  if (field.endsWith("_date")) return precision === "month" ? String(value).slice(0,7).replace("-","/") : fmtDate(value);
   if (Array.isArray(value)) return value.map(v => modelValueLabels[v] || v).join("、");
   return modelValueLabels[value] || String(value);
 }
@@ -16,7 +16,7 @@ async function loadModelDetail(id) {
   const root = document.getElementById("model-detail");
   root.innerHTML = '<div class="loading"><div class="spinner"></div>正在读取模型…</div>';
   try {
-    const response = await fetch(`${API}/api/models/${id}`);
+    const response = await apiFetch(`${API}/api/models/${id}`);
     if (!response.ok) throw new Error(response.status === 404 ? "没有找到这个模型" : "模型暂时无法加载，请稍后重试");
     const model = await response.json();
     if (request !== modelDetailRequest || activeView !== "model") return;
@@ -52,12 +52,13 @@ async function loadModelDetail(id) {
               ${story.cover_image && /^https?:\/\//i.test(story.cover_image.url) ? `<a class="model-story-image" href="#insight/${story.id}" tabindex="-1" aria-hidden="true"><img src="${esc(story.cover_image.url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>` : ""}
             </article>`).join("") : '<p class="model-muted">关于这个模型的后续报道，会汇集在这里。</p>'}
           </section>
+          ${model.events?.length ? `<section class="model-section"><h2>模型进展</h2><ol class="model-updates">${model.events.map(event => `<li><time>${fmtDate(event.date)}</time><p>${esc(event.summary)}</p>${event.sources.filter(source => /^https?:\/\//i.test(source.url)).map(source => `<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>`).join(" · ")}</li>`).join("")}</ol></section>` : ""}
         </div>
         <aside class="model-aside">
           <section class="model-section"><h2>使用与资料</h2>
             ${(model.links || []).length ? model.links.map(link => `<a class="model-resource" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)}<span aria-hidden="true">↗</span></a>`).join("") : '<p class="model-muted">暂无公开资料入口。</p>'}
           </section>
-          ${model.updates?.length ? `<section class="model-section"><h2>资料更新</h2><ol class="model-updates">${model.updates.slice(0,6).map(update => `<li><time>${fmtDate(update.date)}</time><p>${esc(update.label)} · ${esc(modelValue(update.field, update.value))}</p></li>`).join("")}</ol></section>` : ""}
+          ${model.updates?.length ? `<section class="model-section"><h2>资料更新</h2><ol class="model-updates">${model.updates.slice(0,6).map(update => `<li><time>${fmtDate(update.date)}</time><p>${esc(update.label)} · ${esc(modelValue(update.field, update.value, update.precision))}</p></li>`).join("")}</ol></section>` : ""}
         </aside>
       </div>
       <footer class="model-footnote">${model.last_checked_at ? `资料截至 ${fmtDate(model.last_checked_at)}` : ""}${model.references?.length ? `<details><summary>参考资料</summary>${model.references.map(url => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(new URL(url).hostname)} ↗</a>`).join("")}</details>` : ""}</footer>
@@ -89,7 +90,7 @@ async function loadModelChanges() {
 
 async function resolveModelChange(id, action) {
   try {
-    const response = await fetch(`${API}/api/pending/changes/${id}/${action}`, {method:"POST"});
+    const response = await apiFetch(`${API}/api/pending/changes/${id}/${action}`, {method:"POST"});
     if (!response.ok) throw new Error((await response.json()).detail || "处理失败");
     await loadModelChanges();
   } catch (error) { alert(error.message); }

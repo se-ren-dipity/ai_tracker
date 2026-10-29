@@ -26,7 +26,7 @@ from backend.routers.pending import router as pending_router
 
 
 def result(item_id=1, **overrides):
-    values = dict(item_id=item_id, keep=True, event_key="example-v2-release",
+    values = dict(item_id=item_id, keep=True, event_key="example-v2-release", event_kind="release",
                   title="Example v2 发布", category="model_release", summary="新模型增加流式接口。",
                   facts=[{"text": "支持流式接口", "quote": "增加流式接口"}],
                   analysis="可能降低接入延迟，仍需实测。", next_step="核对接口说明。",
@@ -58,13 +58,13 @@ class SplitTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.IsolatedAsyncioTestCase):
-    async def analyze(self, responses, existing=None):
+    async def analyze(self, responses, existing=None, links=None):
         client = MagicMock()
         client.with_options.return_value = client
         client.chat.completions.create = AsyncMock(side_effect=[SimpleNamespace(choices=[SimpleNamespace(
             finish_reason="stop", message=SimpleNamespace(content=value))]) for value in responses])
         with patch.object(agent, "get_client", return_value=client):
-            output = await agent.analyze_batch([{"id": 1, "title": "Example", "body_text": "Example v2 增加流式接口。", "links": "[]"}], existing or [])
+            output = await agent.analyze_batch([{"id": 1, "title": "Example", "body_text": "Example v2 增加流式接口。", "links": json.dumps(links or [])}], existing or [])
         return output, client
 
     async def test_retries_invalid_json_and_accepts_traceable_fact(self):
@@ -88,6 +88,28 @@ class ValidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(output[0].facts), 1)
         self.assertIn("移除", output[0].cautions[-1])
 
+    async def test_same_official_announcement_is_merged_across_titles(self):
+        url = "https://example.com/index/scientific-discoveries/"
+        old = {"id": 12, "title": "OpenAI 宣布三项科学发现", "event_kind": "research", "links": [url]}
+        value = result(title="OpenAI 模型取得三项科学发现", category="engineering", event_kind="research")
+        output, _ = await self.analyze([json.dumps({"items": [value.model_dump()]})], [old], [url + "?utm_source=rss"])
+        self.assertEqual(output[0].duplicate_of, 12)
+
+    async def test_evaluation_cannot_merge_with_release_even_with_shared_links(self):
+        url = "https://example.com/index/example-model"
+        old = {"id": 12, "title": "Example v2 发布", "event_kind": "release", "links": [url]}
+        value = result(title="Example v2 独立评测", event_kind="evaluation", duplicate_of=12)
+        output, _ = await self.analyze([json.dumps({"items": [value.model_dump()]})], [old], [url])
+        self.assertIsNone(output[0].duplicate_of)
+        self.assertEqual(output[0].category, "engineering")
+
+    async def test_shared_model_card_does_not_force_merge(self):
+        url = "https://huggingface.co/lab/model"
+        old = {"id": 12, "title": "Example v2 发布", "event_kind": "release", "links": [url]}
+        value = result(event_kind="release")
+        output, _ = await self.analyze([json.dumps({"items": [value.model_dump()]})], [old], [url])
+        self.assertIsNone(output[0].duplicate_of)
+
 
 class StoreTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -108,6 +130,46 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
                 yield db
         app.dependency_overrides[database.get_db] = get_db
         self.client = TestClient(app)
+
+    async def test_event_kind_fences_bad_duplicate_and_event_key_collision(self):
+        with self.session() as db:
+            agent.save_analysis(db, result(event_kind="release"))
+            db.commit()
+            agent.save_analysis(db, result(2, event_kind="evaluation", category="engineering", duplicate_of=1))
+            db.commit()
+            self.assertEqual(db.query(Insight).count(), 2)
+            self.assertNotEqual(db.get(SourceItem, 1).insight_id, db.get(SourceItem, 2).insight_id)
+            self.assertIsNotNone(db.get(SourceItem, 2).analysis_json)
+
+    async def test_new_report_updates_title_summary_and_date(self):
+        with self.session() as db:
+            agent.save_analysis(db, result())
+            db.commit()
+            db.get(SourceItem, 2).published = datetime(2026, 10, 22)
+            agent.save_analysis(db, result(2, duplicate_of=1, title="新版已开放", summary="开放情况已更新"))
+            db.commit()
+            row = db.get(Insight, 1)
+            self.assertEqual(row.title, "新版已开放")
+            self.assertEqual(row.summary, "开放情况已更新")
+            self.assertEqual(row.published, datetime(2026, 10, 22))
+
+    async def test_engineering_news_can_discover_a_new_model(self):
+        with self.session() as db:
+            db.get(SourceItem, 1).body_text = "Example v2 增加流式接口。"
+            agent.save_analysis(db, result(category="engineering", event_kind="evaluation", model_candidates=[
+                {"name": "Example v2", "quote": "Example v2 增加流式接口。"}]))
+            db.commit()
+        with patch("backend.collector.insight_models.SessionLocal", self.session):
+            await queue_model_drafts()
+            await queue_model_drafts()
+        with self.session() as db:
+            self.assertEqual(db.query(PendingModel).count(), 1)
+
+    def test_source_failures_are_exposed_by_status_api(self):
+        with patch("backend.collector.source_settings.source_overview", return_value=[{"name": "Models Table", "enabled": True, "status": "cached", "error": "ConnectError", "fetched_at": "2026-10-26"}]):
+            status = self.client.get("/api/insights/status").json()
+        self.assertIn("Models Table", status["last_error"])
+        self.assertEqual(status["collection_sources"][0]["status"], "cached")
 
     def tearDown(self):
         self.client.close()
@@ -190,29 +252,28 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["cover_image"], item["cover_images"][0])
         self.assertEqual(item["cover_images"], self.client.get("/api/insights/1").json()["images"])
 
-    async def test_model_queue_and_approval_keep_event_link(self):
+    async def test_direct_model_admission_keeps_event_link_without_paid_task(self):
         with self.session() as db:
-            agent.save_analysis(db, result())
+            db.get(SourceItem, 1).body_text = "Example v2 增加流式接口。"
+            agent.save_analysis(db, result(model_candidates=[
+                {"name": "Example v2", "quote": "Example v2 增加流式接口。"}]))
             db.commit()
-        with patch("backend.collector.insight_models.SessionLocal", self.session), patch("backend.collector.insight_models.enrich_model", new_callable=AsyncMock, return_value={"name": "Example v2", "type": "Unknown", "confidence": "{}"}) as enrich, patch("backend.collector.model_review.review_models", new_callable=AsyncMock) as review:
+        with patch("backend.collector.insight_models.SessionLocal", self.session), patch("backend.collector.model_review.review_models", new_callable=AsyncMock) as review:
             await queue_model_drafts()
             await queue_model_drafts()
-            enrich.assert_awaited_once()
             review.assert_not_awaited()
             from backend.models.model_task import ModelTask
             with self.session() as db:
-                self.assertEqual(db.query(ModelTask).one().pending_id, 1)
+                self.assertEqual(db.query(ModelTask).count(), 0)
             with self.session() as db:
                 db.get(Insight, 1).model_names = '["EXAMPLE-v2"]'
                 db.commit()
             await queue_model_drafts()
-            enrich.assert_awaited_once()
         with self.session() as db:
             draft = db.query(PendingModel).one()
             self.assertEqual(draft.source_article_id, 1)
             self.assertEqual(draft.source_insight_id, 1)
-        approved = self.client.post("/api/pending/1/approve").json()
-        self.assertEqual(approved["status"], "approved")
+            self.assertEqual(draft.status, "approved")
         with self.session() as db:
             self.assertEqual(db.get(Insight, 1).related_model_id, db.query(AIModel).one().id)
 
@@ -229,8 +290,8 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
         from backend.collector import scheduler
         feed = [{"url": "https://example.com/new", "title": "New event", "source": "Test", "raw_content": "New body"}] * 2
         with patch.object(scheduler, "SessionLocal", self.session), patch.object(scheduler, "load_sources", return_value=[{"name": "Test", "url": "https://example.com/feed"}]), patch.object(scheduler, "fetch_feed", new_callable=AsyncMock, return_value=feed), patch.object(scheduler, "collect_article_content", new_callable=AsyncMock, return_value={"content_html": "<p>New body</p>"}) as collect, patch.object(scheduler, "build_insights", new_callable=AsyncMock) as analyze:
-            await scheduler.collect_and_analyze()
-            await scheduler.collect_and_analyze()
+            await scheduler.collect_news()
+            await scheduler.collect_news()
             self.assertEqual(analyze.await_count, 2)
             collect.assert_awaited_once()
         with self.session() as db:

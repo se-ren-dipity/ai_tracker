@@ -25,7 +25,7 @@ def decision(identifier=1, **overrides):
 
 class ReviewTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.research_patch = patch.object(review, "research_model", AsyncMock(return_value={"status": "complete", "sources": [], "updates": [], "identity": []}))
+        self.research_patch = patch.object(review, "research_model", AsyncMock(return_value={"status": "complete", "sources": [], "updates": [], "identity": [{"source_id": 1, "quote": "Example-v2 is a model"}]}))
         self.research_patch.start()
         self.addCleanup(self.research_patch.stop)
         self.engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -46,6 +46,20 @@ class ReviewTests(unittest.IsolatedAsyncioTestCase):
         self.client.close()
         self.engine.dispose()
         review.review_state.update(running=False, last_error=None)
+
+    def test_type_matches_verified_modalities(self):
+        self.assertEqual(review.consistent_type("TTS", {"modality_in": '["audio"]', "modality_out": '["audio"]'}), "Speech")
+        self.assertEqual(review.consistent_type("Other", {"modality_in": ["audio"], "modality_out": ["text"]}), "Speech")
+        self.assertEqual(review.consistent_type("LLM", {"modality_in": ["image", "text"]}), "VLM")
+        self.assertEqual(review.consistent_type("TTS", {"modality_in": ["text"], "modality_out": ["audio"]}), "TTS")
+
+    async def test_no_identity_quote_cannot_be_automatically_approved(self):
+        with patch.object(review, "SessionLocal", self.session), patch.object(review, "research_model", AsyncMock(return_value={"status": "complete", "sources": [], "updates": [], "identity": []})), patch.object(review, "judge_batch", AsyncMock(return_value=[decision()])):
+            counts = await review.review_models([1])
+        self.assertEqual(counts["deferred"], 1)
+        with self.session() as db:
+            self.assertEqual(db.query(AIModel).count(), 0)
+            self.assertEqual(db.get(PendingModel, 1).status, "draft")
 
     async def test_automatic_approval_is_idempotent_and_preserves_audit(self):
         with patch.object(review, "SessionLocal", self.session), patch.object(review, "judge_batch", AsyncMock(return_value=[decision()])) as judge:
@@ -166,7 +180,7 @@ class ReviewTests(unittest.IsolatedAsyncioTestCase):
                    estimated_params="*", params_total="600", mmlu="", mmlu_pro="", gpqa="90", hle="",
                    release_date="2026-10-01", announced="Oct/2026", notes="estimated parameters",
                    license="🔒", context_window="🔒")
-        draft, evidence = await make_draft(row, None)
+        draft, evidence = make_draft(row)
         self.assertIsNone(draft["params_b"])
         self.assertIsNone(draft["license"])
         self.assertIsNone(draft["context_length"])
@@ -174,9 +188,7 @@ class ReviewTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(evidence["public_row"]["params_total"], "600")
 
         row.update(estimated_params="", playground="https://huggingface.co/Lab/New-Model", params_total="552")
-        client = MagicMock()
-        client.get = AsyncMock(return_value=MagicMock(json=lambda: {"safetensors": {"total": 763205000000}}))
-        draft, _ = await make_draft(row, client)
+        draft, _ = make_draft(row)
         self.assertEqual(draft["params_b"], 552)
 
 

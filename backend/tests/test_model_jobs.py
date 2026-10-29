@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
@@ -22,7 +23,7 @@ from backend.routers.pending import router as pending_router
 
 
 def findings(**extra):
-    return {"status": "complete", "checked_at": datetime.utcnow().isoformat(), "updates": [
+    return {"status": "complete", "identity": [{"source_id": 1, "quote": "Example v2 is a model"}], "checked_at": datetime.utcnow().isoformat(), "updates": [
         {"field": "context_length", "value": 131072, "url": "https://example.com/model", "quote": "Example v2 has 128K context"}], **extra}
 
 
@@ -113,7 +114,28 @@ class ModelJobTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.get(ModelTask, 1).attempts, 0)
             self.assertIsNotNone(jobs.claim_task(db, "retry"))
 
-    def test_due_models_and_backlog_are_queued_but_not_recently_checked_models(self):
+    async def test_manual_rejection_wins_over_inflight_automatic_decision(self):
+        async def manual_reject_then_return_decision(items, existing):
+            with self.session() as db:
+                row = db.get(PendingModel, 1)
+                row.status, row.reviewer, row.reviewed_at = "rejected", "manual", datetime.utcnow()
+                row.review_reason = "人工丢弃"
+                db.commit()
+            return [review.Decision(item_id=1, decision="approved", type="LLM", reason="自动通过", summary="模型")]
+        with self.session() as db:
+            jobs.claim_task(db, "worker")
+        with patch.object(review, "SessionLocal", self.session), patch.object(worker, "SessionLocal", self.session), \
+             patch.object(review, "research_model", AsyncMock(return_value=findings())), \
+             patch.object(review, "judge_batch", AsyncMock(side_effect=manual_reject_then_return_decision)):
+            await worker.run_task(1, 1, "worker")
+        with self.session() as db:
+            row = db.get(PendingModel, 1)
+            self.assertEqual((row.status, row.reviewer, row.review_reason), ("rejected", "manual", "人工丢弃"))
+            self.assertEqual(db.query(AIModel).count(), 0)
+            self.assertEqual(db.get(ModelTask, 1).status, "done")
+
+    @patch.dict(os.environ, {"MODEL_AUTO_REVIEW_ENABLED": "true"})
+    def test_opt_in_due_models_and_backlog_are_queued_but_not_recently_checked_models(self):
         now = datetime.utcnow()
         with self.session() as db:
             db.add_all([AIModel(name="Due", type="LLM", next_review_at=now-timedelta(days=1)),
@@ -169,7 +191,7 @@ class ModelJobTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(json.loads(model.field_states)["params_b"], "undisclosed")
             self.assertEqual((model.next_review_at-model.last_checked_at).days, 30)
 
-    async def test_existing_model_news_enqueues_once_and_again_only_after_new_content(self):
+    async def test_historical_insight_changes_do_not_queue_paid_research(self):
         from backend.collector.insight_models import queue_model_drafts
         with self.session() as db:
             model = AIModel(name="Example v2", type="LLM")
@@ -180,20 +202,12 @@ class ModelJobTests(unittest.IsolatedAsyncioTestCase):
             await queue_model_drafts()
             await queue_model_drafts()
             with self.session() as db:
-                pending = db.query(PendingModel).filter_by(model_id=1).one()
-                task = db.query(ModelTask).filter_by(pending_id=pending.id).one()
-                task_id = task.id
-                self.assertEqual(task.reason, "相关报道更新")
-                task.status = "done"
-                db.commit()
-            await queue_model_drafts()
-            with self.session() as db:
-                self.assertEqual(db.get(ModelTask, task_id).status, "done")
                 db.get(Insight, 1).generated_at = datetime.utcnow() + timedelta(seconds=1)
                 db.commit()
             await queue_model_drafts()
         with self.session() as db:
-            self.assertEqual(db.get(ModelTask, task_id).status, "queued")
+            self.assertEqual(db.query(ModelTask).count(), 1)  # Only the manually queued fixture.
+            self.assertEqual(db.query(PendingModel).filter_by(model_id=1).count(), 0)
             self.assertEqual(db.query(AIModel).count(), 1)
 
     def test_admin_can_accept_or_dismiss_corrections_and_stale_updates_are_blocked(self):

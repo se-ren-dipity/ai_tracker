@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-29",
+  "ffmpeg": "7.1-essentials_build-www.gyan.dev",
+  "filter": "crop=554:554:356:94,format=rgba,colorkey=0x00F200:0.22:0.12,despill=green,scale=512:512,setsar=1",
+  "fps": 24,
+  "audio": false,
+  "clips": [
+    {
+      "id": "idle",
+      "source": "idle.mp4",
+      "source_sha256": "3f9a568bd7c6f02058e5e12df5e087c528300379d5e8aaefea4505c35acf89cf",
+      "output": "idle-v2.webm",
+      "output_sha256": "4e2cf0419318e0ff2b4ebbcbc4d4aff5af6e09285dbba10213e0a69dfe70f685",
+      "bytes": 394176
+    },
+    {
+      "id": "search",
+      "source": "search.mp4",
+      "source_sha256": "ab4de46516b536933145a40d590674a17c276ae87f545d934157f6f938db4e00",
+      "output": "search-v2.webm",
+      "output_sha256": "25f48a86fe87c106ea71b117ea2854dd21b4929f8a5e8913680ae4cf31bc262e",
+      "bytes": 229290
+    },
+    {
+      "id": "pat",
+      "source": "pat.mp4",
+      "source_sha256": "0bf797e3a54e12af381a5f5b254981dff9afc72db0670580c3cb78d47cd5bf6f",
+      "output": "pat-v2.webm",
+      "output_sha256": "6c0fa0a5d311fd89a77c8c98a72d48f6749d9c1a80db8773a1aa61ea2f58eddb",
+      "bytes": 612774
+    },
+    {
+      "id": "idle_guard",
+      "source": "idle_guard.mp4",
+      "source_sha256": "338cc7d394186481ef4956aa7d2338db9e9e39b2e35b3f5c10eb27bf199c197a",
+      "output": "idle_guard-v2.webm",
+      "output_sha256": "831dfccda82062d2e404b1a1a8ce35cc4b19a622fa98df90868213cfd8a3a7bd",
+      "bytes": 496985
+    },
+    {
+      "id": "idle_drum",
+      "source": "idle_drum.mp4",
+      "source_sha256": "f7706f578325d62cb8b0a8b99e06f7375d05882d3634f45e58edc667bab696ae",
+      "output": "idle_drum-v2.webm",
+      "output_sha256": "184c0f85b82cd632d77bc94a0ee7927ce7989e57c541565a2d157fb6b37e2657",
+      "bytes": 677835
+    },
+    {
+      "id": "idle_listen",
+      "source": "idle_listen.mp4",
+      "source_sha256": "3e59bcd5e28acc6c20d1691e0a259521a982452d855c8f83202c57ec2a761d2a",
+      "output": "idle_listen-v2.webm",
+      "output_sha256": "19b1f85c65246dbeb295d67c0e5d7c00b114d52e27e570543add23fa44c48a82",
+      "bytes": 496784
+    },
+    {
+      "id": "idle_sneeze",
+      "source": "idle_sneeze.mp4",
+      "source_sha256": "e2b87eb188ebcfeb0f9a6c8a2eb7f6017a37c900055a6561393c49d56a4caa4c",
+      "output": "idle_sneeze-v2.webm",
+      "output_sha256": "2012e381312ec153160f3061ae90444111c2c760123820ab34903b8f1513f04d",
+      "bytes": 737637
+    },
+    {
+      "id": "peek",
+      "source": "peek.mp4",
+      "source_sha256": "54ac2b66f0eb1720f0ad2ea07a0426979117a4bb2edc03c264ef1b9530d4f2fc",
+      "output": "peek-v2.webm",
+      "output_sha256": "05fb9595e50c5678c0ace7e86ec29af83f645af672145f90aac6629630350f60",
+      "bytes": 568725
+    },
+    {
+      "id": "nap",
+      "source": "nap.mp4",
+      "source_sha256": "ea707fc00ba3c208df0c1709fe28478d2a0df554b9e63a00bba907e84f8790f3",
+      "output": "nap-v2.webm",
+      "output_sha256": "16b8b5a3672ea31d53eccf8723578d087b22ccbd733ba9e0ab14bb25423f39bf",
+      "bytes": 717802
+    }
+  ]
+}

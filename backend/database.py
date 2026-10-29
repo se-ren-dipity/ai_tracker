@@ -8,7 +8,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30},
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -26,12 +26,22 @@ def get_db():
 
 
 def init_db():
+    from backend.runtime import process_lock
+    with process_lock("schema", wait=True):
+        _init_db()
+
+
+def _init_db():
     from backend.models import article   # noqa: F401
     from backend.models import model_db  # noqa: F401
     from backend.models import digest    # noqa: F401
     from backend.models import pending   # noqa: F401
     from backend.models import insight   # noqa: F401
     from backend.models import model_task  # noqa: F401
+    from backend.models import model_table  # noqa: F401
+    from backend.models import operations  # noqa: F401
+    from backend.models import model_event  # noqa: F401
+    from backend.models import assistant  # noqa: F401
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
@@ -47,8 +57,10 @@ def init_db():
             "models": {"source_url": "TEXT", "release_precision": "VARCHAR(10)",
                        "existence_status": "VARCHAR(20)", "weight_access": "VARCHAR(20)",
                        "api_availability": "VARCHAR(20)", "announced_date": "DATE", "available_date": "DATE",
-                       "field_states": "TEXT", "last_checked_at": "DATETIME", "next_review_at": "DATETIME"},
-            "insights": {"body_paragraphs": "TEXT"},
+                       "field_states": "TEXT", "last_checked_at": "DATETIME", "next_review_at": "DATETIME",
+                       "locked_fields": "TEXT DEFAULT '[]'"},
+            "insights": {"body_paragraphs": "TEXT", "event_kind": "VARCHAR(30) DEFAULT 'other'"},
+            "source_items": {"analysis_json": "TEXT", "source_section": "VARCHAR(100)", "model_discovery": "TEXT"},
         }.items():
             columns = {column["name"] for column in inspect(connection).get_columns(table)}
             for name, kind in additions.items():

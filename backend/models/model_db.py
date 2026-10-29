@@ -34,6 +34,7 @@ class AIModel(Base):
     announced_date = Column(Date)
     available_date = Column(Date)
     field_states = Column(Text, default="{}")
+    locked_fields = Column(Text, default="[]")
     last_checked_at = Column(DateTime)
     next_review_at = Column(DateTime, index=True)
     notes = Column(Text)
@@ -67,6 +68,7 @@ class AIModel(Base):
             "announced_date": self.announced_date.isoformat() if self.announced_date else None,
             "available_date": self.available_date.isoformat() if self.available_date else None,
             "field_states": json.loads(self.field_states or "{}"),
+            "locked_fields": json.loads(self.locked_fields or "[]"),
             "last_checked_at": self.last_checked_at.isoformat() if self.last_checked_at else None,
             "next_review_at": self.next_review_at.isoformat() if self.next_review_at else None,
             "notes": self.notes,

@@ -11,6 +11,7 @@ from backend.database import get_db
 from backend.models.model_db import AIModel
 from backend.models.insight import Insight
 from backend.models.model_task import ModelInsight, ModelObservation
+from backend.models.model_table import ModelTableEntry, SOURCE_URL as MODELS_TABLE_URL
 from backend.collector.insight_reader import reading_assets, web_url
 from backend.collector.model_profiles import FIELD_LABELS
 
@@ -58,10 +59,14 @@ def list_models(
         "release_date": AIModel.release_date.desc().nullslast(),
         "params_b": AIModel.params_b.desc().nullslast(),
         "name": AIModel.name,
+        "type": AIModel.type,
+        "organization": AIModel.organization.asc().nullslast(),
+        "context_length": AIModel.context_length.desc().nullslast(),
+        "license": AIModel.license.asc().nullslast(),
     }.get(sort, AIModel.release_date.desc().nullslast())
 
     total = query.count()
-    items = query.order_by(sort_col).offset((page - 1) * page_size).limit(page_size).all()
+    items = query.order_by(sort_col, AIModel.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {"total": total, "page": page, "page_size": page_size, "items": [m.to_dict() for m in items]}
 
 
@@ -72,6 +77,13 @@ def get_filter_options(db: Session = Depends(get_db)):
     orgs = [r[0] for r in db.query(AIModel.organization).distinct().order_by(AIModel.organization).all() if r[0]]
     licenses = [r[0] for r in db.query(AIModel.license).distinct().all() if r[0]]
     return {"types": sorted(types), "organizations": orgs, "licenses": sorted(licenses)}
+
+
+@router.get("/search")
+def search_registry(q: str = Query(min_length=1, max_length=200), organization: str | None = None,
+                    limit: int = Query(10, ge=1, le=50), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+    from backend.registry import search_models
+    return search_models(db, q, organization, limit, offset)
 
 
 @router.get("/{model_id}")
@@ -90,14 +102,23 @@ def get_model(model_id: int, db: Session = Depends(get_db)):
     observations = db.query(ModelObservation).filter_by(model_id=model_id, status="accepted").order_by(ModelObservation.observed_at.desc(), ModelObservation.id.desc()).all()
     updates = [{"field": row.field, "label": FIELD_LABELS[row.field], "value": json.loads(row.value),
                 "previous_value": json.loads(row.previous_value or "null"),
+                "precision": "month" if row.field == "release_date" and row.url == MODELS_TABLE_URL else None,
                 "date": (row.resolved_at or row.observed_at).isoformat()}
                for row in observations if row.state == "known" and row.value != row.previous_value][:12]
     links = []
     for label, url in [("模型权重", m.hf_url), ("技术报告 / 介绍", m.paper_url), ("项目代码", m.github_url)]:
         if web_url(url):
             links.append({"label": label, "url": url})
-    references = list(dict.fromkeys(row.url for row in observations if web_url(row.url)))[:6]
-    return m.to_dict() | {"articles": articles, "updates": updates, "links": links, "references": references}
+    sources = [m.source_url]
+    table_entry = db.query(ModelTableEntry).filter_by(model_id=model_id).first()
+    if table_entry:
+        sources.append(MODELS_TABLE_URL)
+        playground = json.loads(table_entry.public_row).get("playground")
+        if web_url(playground) and playground not in {link["url"] for link in links}:
+            links.append({"label": "体验入口", "url": playground})
+    references = list(dict.fromkeys(url for url in sources + [row.url for row in observations] if web_url(url)))[:6]
+    from backend.registry import get_model as get_profile
+    return get_profile(db, model_id) | {"articles": articles, "updates": updates, "links": links, "references": references}
 
 
 @router.post("")

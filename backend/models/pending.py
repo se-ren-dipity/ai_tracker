@@ -24,7 +24,8 @@ class PendingModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
-        research = json.loads(self.evidence or "{}").get("research", {})
+        evidence = json.loads(self.evidence or "{}")
+        research = evidence.get("research", {})
         return {
             "id": self.id,
             "draft": json.loads(self.draft) if self.draft else {},
@@ -37,6 +38,7 @@ class PendingModel(Base):
             "reviewer": self.reviewer,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "model_id": self.model_id,
+            "maintenance": evidence.get("maintenance"),
             "research": {key: research.get(key) for key in ("status", "checked_at", "unresolved", "errors")}
                         | {"source_count": len(research.get("sources", [])),
                            "fields": [item["field"] for item in research.get("applied", [])]},

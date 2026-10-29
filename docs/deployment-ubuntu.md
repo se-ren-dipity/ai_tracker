@@ -1,340 +1,211 @@
-# Ubuntu 24.04 服务器部署流程（直接使用 IP）
+# Ubuntu 服务器部署与维护
 
-适用于 Ubuntu 24.04 LTS、可 SSH 登录且有 sudo 权限的服务器。以下以专门部署此项目的服务器为例；若已经有 Docker、Nginx 或其他网站，保留原有配置并检查端口占用。
+适用范围：一台 Linux 服务器、Docker Engine 与 Compose v2、一个管理员。前端和 API 使用同一个域名，SQLite 放在服务器本地磁盘。现在使用仓库内的 `docker-compose.yml`，不要继续使用旧版只启动 backend 的 `compose.server.yml`。
 
-部署结构：浏览器 → 服务器 IP 的 80 端口 → Nginx → 127.0.0.1:8000 → Docker 内的 FastAPI。前端由同一应用提供，不需要安装 Node.js、MySQL 或 GPU。
+## 运行结构
 
-项目没有内置登录鉴权，内容管理 API 可以执行更新和审核。因此本流程用 Nginx 限制访问来源 IP，8000 端口只绑定服务器回环地址。IP 白名单不是加密；本方案使用 HTTP。如需通过公共网络保护传输内容，应另行配置 HTTPS 或使用 SSH 隧道。
-
-## 1. 准备服务器信息与访问规则
-
-准备服务器公网 IPv4、SSH 用户名、你的电脑当前公网出口 IPv4。文中的 `SERVER_PUBLIC_IP` 和 `YOUR_PUBLIC_IP` 必须分别替换；后者不是电脑的 192.168.x.x 内网地址。
-
-在本机 PowerShell 查看当前公网 IPv4：
-
-```powershell
-curl.exe -4 https://api.ipify.org
-```
-
-云服务器安全组放行：
-
-| 端口 | 来源 | 用途 |
+| 服务 | 职责 | 状态保存 |
 |---|---|---|
-| TCP 22（或实际 SSH 端口） | 你的公网 IP/32 | SSH、上传文件 |
-| TCP 80 | 你的公网 IP/32 | 浏览网页 |
-| TCP 8000 | 不放行 | 仅供本机 Nginx 访问 |
+| backend | 网页、管理员登录、查询、任务入队 | 管理会话、来源开关、操作记录 |
+| collector | 每天北京时间 10 点采集，随后分析、编排、发现模型 | collection_runs 及阶段检查点 |
+| model-worker | 管理员手动联网补查与资料更正；默认关闭旧模型周期研究 | model_tasks、研究检查点和租约 |
 
-如果已启用 UFW，也添加对应的 22、80 规则；不要在未确认 SSH 端口规则前直接启用防火墙。Docker 发布的端口可能绕过 UFW，所以仍要保留后面的 `127.0.0.1:8000:8000` 绑定。[Docker 端口说明](https://docs.docker.com/engine/network/port-publishing/)
+三个服务共享 `./data:/app/data`，各运行一个进程。网页重启不会启动采集；采集任务每天只有一个唯一标识。每天 10 点后启动时补建当天漏掉的任务，10 点前启动则等待或手动触发。历史停机天数不会产生虚构日报，只能补收源站当前 RSS 窗口内仍可获取的资料。
 
-## 2. 在服务器安装 Docker Compose 和 Nginx
+各来源独立处理，成功来源在同一任务重试时跳过。连接失败最多请求 3 次；来源或整理步骤仍失败，则任务间隔 30 分钟再尝试，最多 3 轮，随后显示失败，等待次日新任务或管理员重试。缓存可保留资料，但不算本次同步成功。分析、编排、模型发现按数据状态继续，已完成内容不重复支付分析费用；请求已返回但尚未提交数据库时断电，重试可能再次请求，不能保证外部 API 只调用一次。
 
-本机 PowerShell 登录（用户名按实际修改）：
+模型任务保留独立的 90 秒租约和研究检查点，最多自动尝试 3 次，单项最长 15 分钟。进程文件锁阻止同机启动第二个相同 worker，进程退出后锁由操作系统释放。数据库写事务中不执行网络请求；写锁等待上限 30 秒。不要使用网络文件系统、多机共享 SQLite 或并行运行离线写库脚本。
 
-```powershell
-$ServerHost = "SERVER_PUBLIC_IP"
-$SshUser = "ubuntu"
-ssh "${SshUser}@${ServerHost}"
-```
+## 1. 准备代码与 Docker
 
-下面在服务器 Bash 中执行。已安装正常工作的 Docker Engine 和 Compose 插件时，跳过 Docker 安装部分。已有旧版 Docker 或 Podman 时，先按官方文档处理冲突包，不要直接删除正在被其他服务使用的容器运行时。
+已安装可用的 Docker 和 Compose 时跳过安装；否则按 [Docker Ubuntu 官方步骤](https://docs.docker.com/engine/install/ubuntu/) 安装，并启用开机启动：
 
 ```bash
-sudo apt update
-sudo apt install -y ca-certificates curl git nginx sqlite3
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker nginx
-sudo docker version
+sudo systemctl enable --now docker
 sudo docker compose version
-sudo docker run --rm hello-world
 ```
 
-安装命令依据 [Docker 官方 Ubuntu 安装说明](https://docs.docker.com/engine/install/ubuntu/)。`hello-world` 成功后继续。拉取镜像失败时先检查服务器到 Docker 仓库的网络连接。
-
-## 3. 从仓库获取代码，单独迁移数据库
-
-代码仓库为 `https://code.iflytek.com/xdqian4/Information_gathering.git`，使用 `main` 分支。首次部署时在服务器执行：
+首次获取代码：
 
 ```bash
-git clone --branch main https://code.iflytek.com/xdqian4/Information_gathering.git ~/ai-tracker
+git clone --branch main https://github.com/se-ren-dipity/ai_tracker.git ~/ai-tracker
 cd ~/ai-tracker
-git log -1 --oneline
 mkdir -p data
-printf '%s\n' '/compose.server.yml' '/compose.rollback.yml' '/backups/' '/manifest.json' >> .git/info/exclude
+umask 077
+cp -n .env.example .env
+chmod 600 .env
 ```
 
-如果已经克隆，进入已有仓库执行 `git pull --ff-only origin main` 获取最新代码，后续统一使用该目录；不要再次克隆到非空目录。需要认证时使用代码平台支持的账号凭据或访问令牌，不要将令牌直接拼进仓库 URL。如果服务器无法访问公司代码平台，需要先具备相应网络访问条件。
+已有仓库时使用原目录，检查本地修改后再 `git pull --ff-only origin main`。代码变更需要先提交并推送才会出现在服务器；`.env` 和 `data/` 不在 Git 中。
 
-代码通过 Git 获取，不必再上传代码压缩包。`.env` 和 `data/` 已被 Git 忽略，不会随仓库下载，仍要单独配置和迁移。
+服务器若此前从讯飞代码仓库克隆，先在项目目录运行 `git remote set-url origin https://github.com/se-ren-dipity/ai_tracker.git`，再拉取 `main`。本机保留原 `origin`，另设 `github` 远端用于发布；新服务器从 GitHub 克隆后，`origin` 即为 GitHub。
 
-2026-10-23 准备的数据库迁移文件位于本机 `D:\模型收集\data\deploy-20261023`：
+## 2. 配置与管理员密码
 
-- `tracker.db`：使用 SQLite backup 接口生成的一致快照。
-- `manifest.json`：生成时间、文件校验值和数据数量。
+编辑 `.env`。默认宿主端口为 29011；想保留旧 Nginx 的 8000 转发，可设置 `WEB_PORT=8000`。
 
-数据库保存了情报、原文、模型和任务状态。图片仍使用外部链接，没有单独的图片目录要迁移。
+```dotenv
+DEEPSEEK_API_KEY=你的Key
+COLLECTOR_PROXY=
+BIND_ADDRESS=127.0.0.1
+WEB_PORT=29011
+ADMIN_PASSWORD_HASH=
+ADMIN_COOKIE_SECURE=true
+MODEL_AUTO_REVIEW_ENABLED=false
+```
 
-重新打开一个本机 PowerShell，执行：
+没有 DeepSeek Key 仍会采集 RSS 原文与 Models Table，分析显示等待配置，模型进程保持等待。来源开关在管理员页面修改，保存在数据库；新增 RSS 地址仍编辑 `backend/collector/sources.yaml` 后构建部署。API Key 与代理地址不通过网页编辑或返回。
+
+构建并设置密码（密码至少 12 个字符，终端不回显）：
+
+```bash
+sudo docker compose build
+sudo docker compose run --rm --no-deps backend python -m backend.admin_auth --print-hash
+```
+
+将最后输出的 `ADMIN_PASSWORD_HASH=...` 整行填入 `.env`。没有配置密码时管理接口默认拒绝访问，不提供默认账号密码。只有一位管理员，不需要用户名。登录会话有效期 12 小时，HttpOnly、SameSite=Strict，修改密码并重建网页容器后旧会话失效；连续 5 次密码错误会对该客户端地址限流 15 分钟。
+
+默认 Secure Cookie 用于 HTTPS。仅在本机 HTTP 或下方 SSH 隧道方式下将 `ADMIN_COOKIE_SECURE=false`。不应在公共 HTTP 链路输入管理员密码。阅读资讯和模型无需登录；模型审核、来源切换、采集及重试接口都验证会话和 CSRF。
+
+## 3. 可选：迁移本机数据
+
+最终切换前停止本机的网页、采集 worker 和模型 worker，使用当前版本生成新的快照，不使用之前的过期快照：
 
 ```powershell
-$ServerHost = "SERVER_PUBLIC_IP"
-$SshUser = "ubuntu"
 Set-Location 'D:\模型收集'
-scp 'data/deploy-20261023/tracker.db' "${SshUser}@${ServerHost}:~/ai-tracker/data/tracker.migrated.db"
-scp 'data/deploy-20261023/manifest.json' "${SshUser}@${ServerHost}:~/ai-tracker/"
+.\stop-local.ps1
+.\.venv\Scripts\python.exe -m backend.backup data/tracker.migrated.db
+Get-FileHash data/tracker.migrated.db -Algorithm SHA256
+scp data/tracker.migrated.db ubuntu@SERVER_PUBLIC_IP:~/ai-tracker/data/
+scp -r data/source-cache ubuntu@SERVER_PUBLIC_IP:~/ai-tracker/data/
 ```
 
-若 SSH 使用其他端口，`ssh` 使用小写 `-p`，`scp` 使用大写 `-P`。
-
-服务器上执行：
+快照包含原文、模型、任务、来源设置和管理记录；图片仍引用外部地址。缓存可选，但迁移缓存能让上游暂时不可达时继续提供最近成功的资料。服务器停止所有服务后、仅在目标库不存在时安装初始快照：
 
 ```bash
 cd ~/ai-tracker
 sha256sum data/tracker.migrated.db
-cat manifest.json
 test ! -e data/tracker.db && mv data/tracker.migrated.db data/tracker.db
-sqlite3 -readonly data/tracker.db 'PRAGMA integrity_check;'
-sqlite3 -readonly data/tracker.db 'SELECT COUNT(*) FROM insights; SELECT COUNT(*) FROM models;'
 ```
 
-数据库校验值应与 manifest 的 `tracker.db` 对应，完整性检查应输出 `ok`；manifest 中另外记录的代码包不用于本次 Git 部署。如果 `data/tracker.db` 已存在，迁移命令不会覆盖它：先确认这是首次部署还是已有站点，再决定迁移，不能覆盖服务器上已经新增的数据。
+已有服务器数据时先备份，不能直接覆盖。两台机器之间没有数据库自动合并机制，切换后以服务器为准，不要让本地副本持续采集。
 
-不迁移旧数据时可以跳过数据库上传、迁移和检查；应用首次启动会创建新数据库。快照生成之后本机新增的数据不会自动同步到服务器。
+2026-10-29 已整理的本机初始化快照位于 `data/releases/20261029/tracker.migrated.db`，校验和同目录保存。它保留新闻、模型、证据、任务历史和管理配置，已移除本地登录会话、访客问答/计量和 worker 心跳；完整回滚备份仍在 `data/backups/`。此快照用于新库初始化，不能直接覆盖有独有内容的服务器数据库。完整核对结果见[发布前整理](release-readiness-2026-10-29.md)。
 
-## 4. 配置 API Key 与服务器 Compose 文件
+初始化或更新后可运行只读检查：`sudo docker compose exec -T backend python -m backend.maintenance`。检查结构、声明及软关联、原文拆条和每条新闻事实的原文引用；不会联网或修改数据，不代表上游互联网已被穷尽采集。
 
-服务器执行：
+## 4. 启动与访问
 
 ```bash
-cd ~/ai-tracker
-umask 077
-cp -n .env.example .env
-nano .env
-chmod 600 .env
+sudo docker compose config --quiet
+sudo docker compose up -d
+sudo docker compose ps
+curl --fail http://127.0.0.1:29011/health/ready
+sudo docker compose logs --tail=100 backend collector model-worker
 ```
 
-编辑为：
+Compose 等待网页健康检查通过后启动两个 worker。三个服务有独立的健康检查和 `restart: unless-stopped`。日志各保留 3 个 10 MB 文件；不再通过容器内 `model-worker.log` 判断运行状态，改用 `docker compose logs model-worker`。
 
-```dotenv
-DEEPSEEK_API_KEY=填入你的真实Key
-DB_PATH=data/tracker.db
+**没有域名时推荐 SSH 隧道**：安全组只需开放你的出口 IP 到 SSH 端口，不开放 29011。设置 `ADMIN_COOKIE_SECURE=false` 并重建网页容器，然后在本机运行：
+
+```powershell
+ssh -N -L 29011:127.0.0.1:29011 ubuntu@SERVER_PUBLIC_IP
 ```
 
-不要把 Key 发到聊天、提交到 Git 或写进前端。没有 Key 也能浏览已经迁移的数据，但自动采集、分析和模型资料任务不会启动。
+用 Chrome 打开 `http://localhost:29011/#manage`。保持 SSH 窗口运行即可。通过 SSH 加密传输，服务器端口仍只绑定回环地址。
 
-新建专用的 `compose.server.yml`，避免后续更新仓库里的开发配置时改变服务器端口：
-
-```bash
-cat > compose.server.yml <<'EOF'
-services:
-  backend:
-    image: ai-tracker:current
-    build: .
-    ports:
-      - "127.0.0.1:8000:8000"
-    volumes:
-      - ./data:/app/data
-    environment:
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DB_PATH: data/tracker.db
-    restart: unless-stopped
-    logging:
-      driver: local
-EOF
-
-sudo docker compose -f compose.server.yml config --quiet
-sudo docker compose -f compose.server.yml up -d --build
-sudo docker compose -f compose.server.yml ps
-sudo docker compose -f compose.server.yml logs --tail=100 backend
-```
-
-后续命令都使用 `-f compose.server.yml`。不要直接运行仓库原来的 Compose 配置，否则其 `8000:8000` 会公开发布应用端口。
-
-配置 Key 后启动会立即采集一次，并在每天北京时间 10:00 再采集；不依赖服务器本地时区。模型资料执行进程自动启动，不需要额外添加定时任务或另开 worker。只运行一个后端容器，保持一个 Uvicorn Web 进程。
-
-## 5. 验证应用，然后配置 IP 访问
-
-服务器执行：
-
-```bash
-curl -f http://127.0.0.1:8000/api/insights/dates
-curl -f 'http://127.0.0.1:8000/api/insights?page_size=1'
-curl -f http://127.0.0.1:8000/api/insights/status
-```
-
-应返回 JSON；迁移了数据库时应有原来的情报日期和内容。采集正在进行时状态中的 `running` 可以为 `true`。
-
-编辑 Nginx 配置：
-
-```bash
-sudo nano /etc/nginx/sites-available/ai-tracker
-```
-
-填入以下内容并替换两个 IP 占位符。每个希望允许访问的公网 IP 增加一行 `allow`，最后保留 `deny all`。
+**已有域名与 HTTPS**：保留 `ADMIN_COOKIE_SECURE=true`，让现有 Nginx HTTPS 站点转发至回环端口。以下是站点内的 location 配置，TLS 证书、域名和可选 IP 白名单沿用服务器配置：
 
 ```nginx
-server {
-    listen 80;
-    server_name SERVER_PUBLIC_IP;
-
-    allow YOUR_PUBLIC_IP;
-    allow 127.0.0.1;
-    deny all;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+location / {
+    proxy_pass http://127.0.0.1:29011;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
 }
 ```
 
-启用并检查：
+不要为方便配置将容器端口绑定公网。若前面有代理，登录限流可能按代理地址合并；只在确认代理 IP 后配置 Uvicorn 的可信 forwarded IP，不信任任意客户端传入的地址。
+
+## 5. 验收与故障处理
+
+登录页脚“管理员入口”后确认：
+
+- 两个后台进程在线，最近心跳更新时间正常；模型进程无 Key 时显示等待 API 配置。
+- 来源清单包含 Models Table、橘鸦、两路 AIHOT、机器之心和新智元。
+- 每个来源显示最近成功时间，使用缓存和最新成功不会混淆。
+- 点击一次采集后出现任务记录和阶段状态；重复点击复用尚未结束的任务。
+- 模型审核保留身份依据、字段更正建议、人工确认/丢弃与逐项重新补查。
+- 容器重启后任务 ID、完成步骤和来源开关仍在，网页服务重启不产生新的每日任务。
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/ai-tracker /etc/nginx/sites-enabled/ai-tracker
-sudo nginx -t
-sudo systemctl reload nginx
-curl -f -H 'Host: SERVER_PUBLIC_IP' http://127.0.0.1/api/insights/dates
+sudo docker compose logs --tail=200 collector
+sudo docker compose logs --tail=200 model-worker
+sudo docker compose restart collector
+sudo docker compose ps
 ```
 
-已有同名软链接时不要重复创建，编辑后直接检查并 reload。不要删除服务器上的其他站点配置。Nginx 的 IP 规则按顺序匹配，`allow` 放在 `deny all` 之前。[访问控制说明](https://nginx.org/en/docs/http/ngx_http_access_module.html)、[代理说明](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass)
-
-现在用本机 Chrome 打开 `http://SERVER_PUBLIC_IP`。这里不加 `:8000`，也不是 HTTPS。
-
-## 6. 完成迁移验收
-
-确认首页、历史日期、文章详情、模型库和内容管理都能打开，原来的记录还在；确认有配图的文章能显示预览。第三方图片仍由访问者的浏览器请求原地址，搬到服务器不会改变这部分网络路径。
-
-服务器上检查执行进程日志：
-
-```bash
-cd ~/ai-tracker
-sudo docker compose -f compose.server.yml logs --tail=100 backend
-sudo tail -n 100 data/model-worker.log
-```
-
-填写了 Key 时应能看到调度器启动和模型资料任务相关日志；没填 Key 时不要求存在 worker 日志。
-
-服务器确认正常后，停止本机项目的 Uvicorn 服务及它启动的 `backend.collector.model_worker` 进程，后续以服务器数据库为准。这可以避免两台机器分别采集、消耗 API 额度并形成两套不同的数据。不要停止其他项目的 Python 进程。
-
-如果需要迁移本机快照之后新增的数据，必须先确定最终切换时间：停止本机该项目的写入，重新生成快照；服务器停止后再导入。不要用旧快照覆盖已经投入使用的服务器数据库。
-
-## 7. 日常查看与重启
-
-在服务器项目目录中执行：
-
-```bash
-cd ~/ai-tracker
-sudo docker compose -f compose.server.yml ps
-sudo docker compose -f compose.server.yml logs --tail=100 -f backend
-```
-
-`Ctrl+C` 只退出日志查看，不会停止容器。
-
-```bash
-# 临时停止
-sudo docker compose -f compose.server.yml stop
-
-# 重新启动
-sudo docker compose -f compose.server.yml up -d
-
-# 只重启当前容器
-sudo docker compose -f compose.server.yml restart backend
-```
-
-修改 `.env` 后用 `up -d` 重建配置发生变化的容器；只执行 `restart` 不会刷新容器环境变量。修改代码后用 `up -d --build`。重启会再次触发启动采集，已收录 URL 会去重。
-
-Docker 已启用开机启动，容器配置了 `unless-stopped`。曾经手动 `stop` 的容器需要用 `up -d` 恢复。
-
-## 8. 数据备份
-
-不要直接复制正在写入的数据库文件，用 SQLite 的一致备份接口。服务器上的命令：
-
-```bash
-cd ~/ai-tracker
-umask 077
-mkdir -p backups
-stamp=$(date +%Y%m%d-%H%M%S)
-sqlite3 -readonly data/tracker.db ".backup 'backups/tracker-$stamp.db'"
-sqlite3 -readonly "backups/tracker-$stamp.db" 'PRAGMA integrity_check;'
-cp .env "backups/env-$stamp"
-```
-
-备份目录包含 Key，保持私有。定期把备份另外保存到自己的电脑或备份存储，避免服务器磁盘损坏时连同备份一起丢失。日志不是恢复内容的必要数据。
-
-本机需要重新生成数据库快照时，用 Python 的 `sqlite3.Connection.backup()`；它支持源数据库同时有其他连接访问。[Python SQLite 备份说明](https://docs.python.org/3/library/sqlite3.html#sqlite3.Connection.backup)
-
-## 9. 后续更新与回退
-
-后续在本机完成代码修改、验证、提交和推送，再到服务器拉取。不再上传最初的数据库。
-
-服务器更新前确认工作区干净，再保存原镜像、提交号与数据库。每一步成功后再继续；如果拉取或构建失败，先按下方方法恢复服务，不要重置或丢弃未确认的服务器改动：
-
-```bash
-cd ~/ai-tracker
-git status --short
-git fetch origin main
-sudo docker image tag ai-tracker:current ai-tracker:rollback
-sudo docker compose -f compose.server.yml stop
-mkdir -p backups
-stamp=$(date +%Y%m%d-%H%M%S)
-git rev-parse HEAD > "backups/revision-before-update-$stamp.txt"
-sqlite3 -readonly data/tracker.db ".backup 'backups/tracker-before-update-$stamp.db'"
-git pull --ff-only origin main
-sudo docker compose -f compose.server.yml up -d --build
-curl -f http://127.0.0.1:8000/api/insights/dates
-```
-
-保留 `data/`、`.env`、`compose.server.yml` 和 Nginx 配置，不要用本机旧库覆盖它们。
-
-构建或启动失败时可先恢复原镜像服务：
-
-```bash
-cat > compose.rollback.yml <<'EOF'
-services:
-  backend:
-    image: ai-tracker:rollback
-EOF
-sudo docker compose -f compose.server.yml -f compose.rollback.yml up -d --no-build
-```
-
-如新版本已改变数据库且不兼容旧程序，先停止容器、备份当前 `data/`，再恢复与旧镜像对应的更新前数据库；恢复会丢失备份之后的变更。以下备份文件名必须替换成刚才实际生成的文件名：
-
-```bash
-sudo docker compose -f compose.server.yml stop
-sudo cp -a data "backups/data-before-restore-$(date +%Y%m%d-%H%M%S)"
-sudo sqlite3 data/tracker.db ".restore 'backups/tracker-before-update-实际时间.db'"
-sudo docker compose -f compose.server.yml -f compose.rollback.yml up -d --no-build
-```
-
-## 10. 常见问题
+Docker 的健康检查只标记 unhealthy，**不会单凭 unhealthy 自动重启**；进程退出才按重启策略恢复。心跳长期不更新或磁盘满时需要查看日志并处理。当前没有外部告警系统；无人值守期间的异常会保留供后台查看，如需主动通知可后续接服务器监控。
 
 | 现象 | 检查 |
 |---|---|
-| 403 Forbidden | Nginx 中 `allow` 是否是当前电脑公网出口 IP；更换网络/VPN 后可能变化，需要同步修改安全组与 Nginx |
-| 请求超时 | 云安全组、UFW、80 端口和访问 IP；确认 Nginx 正在运行 |
-| 显示 Nginx 欢迎页 | `server_name` 是否填写实际服务器 IP，站点是否启用且已 reload |
-| 502 Bad Gateway | 容器是否启动；先在服务器访问 `127.0.0.1:8000` |
-| 页面有模型但没有旧情报 | 首次启动前是否把快照放入 `~/ai-tracker/data/tracker.db`；是否在错误目录创建了新库 |
-| 不采集或分析失败 | Key 是否填入并重新 `up -d`；检查额度和服务器到 DeepSeek、橘鸦、AIHOT 的网络连接 |
-| 个别图片仍没有 | 原文无配图，或访问者网络无法加载外链；首页会尝试同一情报最多 3 张已有图片 |
-| Docker 构建失败 | 查看拉镜像和 pip 安装的具体错误；当前依赖未锁定版本，新依赖兼容性也可能影响构建 |
-| 数据库锁冲突 | 是否额外启动了第二个 Web 服务、手工 worker 或并行离线整理命令 |
+| Models Table / RSS 使用缓存 | 服务器到该域名的 DNS、TLS、网络或代理；不要把缓存时间当本次更新时间 |
+| DeepSeek 401 / 403 | Key、权限和实际接口配置；更新环境后重建服务，再从后台重试 |
+| 登录后仍跳回登录 | HTTP 下误用了 Secure Cookie，或代理 Host 不一致 |
+| worker 离线 | 对应容器退出/健康状态、磁盘、数据库权限、重复 worker 文件锁 |
+| 任务显示失败 | 展开任务阶段，修复后点击重试；不必清空数据库 |
+| SQLite 锁冲突 | 是否运行了额外离线写库脚本、第二套项目或使用网络磁盘 |
 
-本流程已依据项目代码与官方文档核对。本机未安装 Docker，未执行服务器镜像构建或远程部署；服务器上完成构建、接口访问和浏览器验收后才算部署成功。
+## 6. 备份与更新
+
+在线一致备份（输出实际文件名并执行完整性检查）：
+
+```bash
+sudo docker compose exec -T backend python -m backend.backup
+```
+
+备份在 `data/backups/`，定期复制到另一台机器或备份存储。数据库包含管理会话，备份应保持私有。`.env` 单独备份并保护权限，缓存可另行归档。此命令没有自动删除策略；检查磁盘容量。按自己的服务器运维方式安排每日备份，例如 cron 每天 03:30 调用上述命令并检查退出码。
+
+更新前保存当前代码版本与镜像，并备份数据库：
+
+```bash
+sudo docker compose exec -T backend python -m backend.backup
+git rev-parse HEAD > data/previous-code-version.txt
+sudo docker image tag ai-tracker:current ai-tracker:previous
+git pull --ff-only origin main
+sudo docker compose build
+sudo docker compose up -d
+sudo docker compose ps
+```
+
+修改 `.env` 使用 `up -d` 重建环境变化的容器；`restart` 不会加载新的环境变量。修改代码后重新 build。直接依赖固定为本机测试通过的版本；Docker 使用 `backend/requirements.lock` 固定 Linux/Python 3.11 的传递依赖。锁文件已完成解析，实际 Linux 镜像构建仍需在目标服务器验证。需要升级依赖时先修改 requirements.txt，再运行 `uv pip compile backend/requirements.txt --python-version 3.11 --python-platform x86_64-unknown-linux-gnu --output-file backend/requirements.lock`，运行测试并在服务器验证新镜像。
+
+回退前停止全部服务并保存故障现场。恢复与旧代码版本匹配的数据库备份，保留备份之后新增的数据副本；恢复会丢失备份后的变化。为三个服务都覆盖镜像：
+
+```yaml
+# compose.rollback.yml，放在仓库外或加入本地 Git exclude
+services:
+  backend:
+    image: ai-tracker:previous
+  collector:
+    image: ai-tracker:previous
+  model-worker:
+    image: ai-tracker:previous
+```
+
+```bash
+sudo docker compose stop
+# 在此保存当前 data 并恢复已确认的数据库备份；不要边运行边覆盖数据库。
+sudo docker compose -f docker-compose.yml -f compose.rollback.yml up -d --no-build
+```
+
+首次从旧单容器版本升级时，旧镜像仍会自己启动 scheduler 和 worker，不能配合新三服务配置运行。回退到该版本必须使用保存的旧 Compose 配置，只启动旧 backend。新版本之后的回退使用上述三服务方案。
+
+## 维护边界
+
+网站助手“囤囤”已增加访客会话、使用额度和管理开关。升级时自动创建四张助手表，先备份再 build/up；同一数据库只运行一个 Web 进程，进程锁会拒绝多 worker。代理为 `/api/assistant/` 关闭 SSE 缓冲并设置 120 秒读超时，HTTPS 继续启用 Secure Cookie。具体默认值、数据保留和尚未完成的服务器验证见 [囤囤第一版](pet-agent-v1.md)。
+
+模型维护 Agent 保留现有三个服务，MCP 作为可选只读服务运行。升级、令牌配置及接入方式见 [第一版使用说明](model-agent-v1.md)。
+
+调度、状态转换、去重和重试由确定性代码负责，LLM 负责有证据的抽取、编排和判断。先用现有结构保障可观察、可恢复和可审查，不引入 Pi/Redis/Celery 等额外依赖。将来有多机吞吐或复杂审批需求，再迁移任务存储与执行框架。自动判断仍可能出错，管理员审核是校正入口，不能以框架替代数据校验。

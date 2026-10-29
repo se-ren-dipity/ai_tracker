@@ -1,7 +1,10 @@
 // Curated information views; shared navigation and helpers live in index.html.
 async function readJSON(url, options) {
-  const response = await fetch(API + url, options);
-  if (!response.ok) throw new Error(response.status === 404 ? "这条情报不存在" : "加载失败，请稍后重试");
+  const response = await apiFetch(API + url, options);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(typeof error.detail === "string" ? error.detail : response.status === 404 ? "这条情报不存在" : "加载失败，请稍后重试");
+  }
   return response.json();
 }
 
@@ -10,10 +13,11 @@ async function loadInsightStatus() {
   const counts = data.counts;
   const pending = (counts.pending || 0) + (counts.failed || 0);
   const progress = data.running ? (pending ? `正在整理，剩余 ${pending} 条` : "正在编排文章…") : pending ? `${pending} 条待整理${counts.failed ? `（${counts.failed} 条上次失败，可重试）` : ""}` : data.unwritten ? `${data.unwritten} 篇文章待编排，可点击更新继续` : data.unprepared_articles ? "有资料等待拆分" : "文章已更新";
-  document.getElementById("insight-status").innerHTML = `<strong>${data.insights} 篇文章</strong> · 已收录 ${data.articles} 份原文 · 合并 ${data.merged} 条重复报道${counts.filtered ? ` · 过滤 ${counts.filtered} 条` : ""}<br>${esc(progress)}${data.last_error ? " · 最近处理有异常，可重新尝试更新" : ""}`;
+  const sources = (data.collection_sources || []).map(source => `${esc(source.name)}：${source.status === "ok" ? "连接正常" : source.status === "cached" ? `刷新失败，使用 ${esc(source.fetched_at ? new Date(source.fetched_at).toLocaleString() : "已有")} 缓存` : "采集失败"}`).join("<br>");
+  document.getElementById("insight-status").innerHTML = `<strong>${data.insights} 篇文章</strong> · 已收录 ${data.articles} 份原文 · 合并 ${data.merged} 条重复报道${counts.filtered ? ` · 过滤 ${counts.filtered} 条` : ""}<br>${esc(progress)}${data.last_error ? `<br>${esc(data.last_error)}` : ""}${sources ? `<br>${sources}` : ""}`;
   const button = document.getElementById("organize-button");
   button.disabled = data.running;
-  button.textContent = data.running ? "正在更新…" : counts.failed ? "重试更新" : "更新文章";
+  button.textContent = data.running ? "正在更新…" : data.last_error || counts.failed ? "重试采集与整理" : "采集并更新";
   clearTimeout(statusTimer);
   if (data.running && activeView === "manage") statusTimer = setTimeout(async () => {
     try { await loadInsightStatus(); }

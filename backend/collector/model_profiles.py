@@ -38,6 +38,8 @@ def record_research(db, model, research, initial=False):
     checked = datetime.fromisoformat(research["checked_at"]).replace(tzinfo=None) if research.get("checked_at") else datetime.utcnow()
     states = json.loads(model.field_states or "{}")
     current = model.to_dict()
+    from backend.collector.model_events import record_events, transition_supported
+    locked = set(json.loads(model.locked_fields or "[]"))
     seen = set()
     entries = [dict(item, state="known") for item in research.get("updates", [])] + research.get("field_statuses", [])
     for item in entries:
@@ -51,7 +53,9 @@ def record_research(db, model, research, initial=False):
             continue
         seen.add(fingerprint)
         precise = field == "release_date" and old and model.release_precision == "month" and str(old)[:7] == str(value)[:7]
-        conflict = state == "conflict" or (state == "known" and old not in EMPTY and old != value and not precise)
+        transition = state == "known" and transition_supported(db, model, item, research)
+        conflict = state == "conflict" or (state == "known" and old != value and
+                    (field in locked or (old not in EMPTY and not precise and not transition)))
         observation = ModelObservation(model_id=model.id, fingerprint=fingerprint, field=field,
             value=json.dumps(value, ensure_ascii=False), previous_value=json.dumps(None if initial else old, ensure_ascii=False),
             state=state, status="proposed" if conflict else "accepted", url=item.get("url"), quote=item.get("quote"), observed_at=checked)
@@ -69,6 +73,7 @@ def record_research(db, model, research, initial=False):
                 states[field] = state
             observation.resolved_at = checked
     model.field_states = json.dumps(states, ensure_ascii=False)
+    record_events(db, model, research)
     schedule_review(model, research)
 
 
@@ -87,6 +92,7 @@ def resolve_observation(db, row, accept):
             raise ValueError("该字段已有其他更新，请重新补查后处理")
         row.previous_value = json.dumps(current, ensure_ascii=False)
         set_fact(model, row.field, value)
+        model.locked_fields = json.dumps(sorted(set(json.loads(model.locked_fields or "[]")) | {row.field}))
         row.status = "accepted"
     else:
         row.status = "dismissed"
@@ -112,13 +118,13 @@ def link_model(db, model_id, insight):
 
 def bootstrap_profiles(db):
     """Idempotently retain existing associations and earlier research evidence."""
-    from backend.collector.insight_models import model_key
+    from backend.collector.insight_models import model_key, model_lookup
     from backend.models.pending import PendingModel
     models = db.query(AIModel).all()
-    by_name = {model_key(name): model for model in models for name in (model.name, model.full_name) if name}
+    by_name = model_lookup(models)
     for insight in db.query(Insight).all():
         ids = {insight.related_model_id} if insight.related_model_id else set()
-        ids.update(by_name[model_key(name)].id for name in json.loads(insight.model_names or "[]") if model_key(name) in by_name)
+        ids.update(by_name[model_key(name)] for name in json.loads(insight.model_names or "[]") if model_key(name) in by_name)
         for model_id in ids:
             if not db.get(ModelInsight, (model_id, insight.id)):
                 link_model(db, model_id, insight)

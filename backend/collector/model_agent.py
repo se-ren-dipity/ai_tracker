@@ -21,6 +21,8 @@ PIPELINE_TYPE_MAP = {
     "conversational": "LLM",
     "automatic-speech-recognition": "ASR",
     "text-to-speech": "TTS",
+    "audio-to-audio": "Speech",
+    "audio-text-to-text": "Speech",
     "text-to-audio": "TTS",
     "text-to-video": "VideoGen",
     "text-to-image": "ImageGen",

@@ -11,6 +11,7 @@ from backend.collector.model_review import promote, queue_existing_models
 from backend.collector.model_jobs import enqueue, task_status
 from backend.collector.model_profiles import resolve_observation
 from backend.models.model_task import ModelTask, ModelObservation
+from backend.runtime import process_lock
 
 router = APIRouter(prefix="/api/pending", tags=["pending"])
 
@@ -74,22 +75,22 @@ def review_change(change_id: int, action: Literal["accept", "dismiss"], db: Sess
 
 @router.post("/{pending_id}/approve")
 def approve_pending(pending_id: int, db: Session = Depends(get_db)):
-    row = db.get(PendingModel, pending_id)
-    if not row:
-        raise HTTPException(404, "未找到模型草稿")
-    if row.status == "approved":
-        model = promote(db, row)
+    with process_lock("registry-write", wait=True):
+        row = db.get(PendingModel, pending_id)
+        if not row:
+            raise HTTPException(404, "未找到模型草稿")
+        if row.status == "approved":
+            model = promote(db, row)
+            db.commit()
+            return {"status": "approved", "model": model.to_dict()}
+        try:
+            m = promote(db, row)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        row.review_decision, row.review_reason = "approved", "人工确认入库"
+        row.reviewer, row.reviewed_at = "manual", datetime.utcnow()
         db.commit()
-        return {"status": "approved", "model": model.to_dict()}
-    try:
-        m = promote(db, row)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    row.review_decision, row.review_reason = "approved", "人工确认入库"
-    row.reviewer, row.reviewed_at = "manual", datetime.utcnow()
-    db.commit()
-
-    return {"status": "approved", "model": m.to_dict()}
+        return {"status": "approved", "model": m.to_dict()}
 
 
 @router.post("/{pending_id}/reject")

@@ -48,6 +48,7 @@ class EditorTests(unittest.IsolatedAsyncioTestCase):
         client = MagicMock()
         client.with_options.return_value = client
         def response(items):
+            items = [{"title": "最新标题", "summary": "最新摘要", **item} for item in items]
             return SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content=json.dumps({"items": items})))])
         client.chat.completions.create = AsyncMock(side_effect=[response([{"id": 2, "paragraphs": ["导语", "正文"]}]), response([{"id": 1, "paragraphs": ["导语", "正文"]}])])
         with patch.object(editor, "get_client", return_value=client):
@@ -70,13 +71,15 @@ class EditorTests(unittest.IsolatedAsyncioTestCase):
             db.commit()
             save_analysis(db, result())
             db.commit()
-        output = [editor.EditedArticle(id=1, paragraphs=["模型增加流式接口。", "可能改善接入体验。"])]
+        output = [editor.EditedArticle(id=1, title="最新标题", summary="最新摘要", paragraphs=["模型增加流式接口。", "可能改善接入体验。"])]
         with patch.object(editor, "SessionLocal", session), patch.object(editor, "edit_batch", new_callable=AsyncMock, return_value=output) as edit:
             await editor.compose_articles()
             await editor.compose_articles()
             edit.assert_awaited_once()
         with session() as db:
             self.assertEqual(json.loads(db.get(Insight, 1).body_paragraphs), output[0].paragraphs)
+            self.assertEqual(db.get(Insight, 1).title, "最新标题")
+            self.assertEqual(db.get(Insight, 1).summary, "最新摘要")
             save_analysis(db, result(2, duplicate_of=1))
             db.commit()
             self.assertIsNone(db.get(Insight, 1).body_paragraphs)

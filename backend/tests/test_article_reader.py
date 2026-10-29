@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -18,6 +20,13 @@ from backend.routers.articles import router
 
 
 class ContentTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        setting = patch("backend.collector.source_fetch.cache_dir", return_value=Path(directory.name))
+        setting.start()
+        self.addCleanup(setting.stop)
+
     def test_sanitizer_preserves_structure_and_removes_active_content(self):
         markup = '''<h1>Source title</h1><h2 id="topic" style="color:red">Topic</h2>
         <p onclick="attack()">Text <strong>bold</strong><script>attack()</script>
@@ -45,7 +54,7 @@ class ContentTests(unittest.IsolatedAsyncioTestCase):
         </item></channel></rss>'''
         client = AsyncMock()
         client.get.return_value = httpx.Response(200, text=xml, request=httpx.Request("GET", "https://example.com/rss"))
-        with patch("backend.collector.feeds.httpx.AsyncClient") as factory:
+        with patch("backend.collector.source_fetch.httpx.AsyncClient") as factory:
             factory.return_value.__aenter__.return_value = client
             articles = await fetch_feed("Feed", "https://example.com/rss")
         self.assertEqual(articles[0]["raw_content"], "Short summary")

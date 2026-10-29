@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#00ff00"/><g transform="translate(549.6672597864768 172.90569395017792) scale(1.2491103202846976)" fill="none">
+  <title id="tuntun-title">囤囤 · 情报收藏小仓鼠</title>
+  <desc id="tuntun-desc">蓝灰色的圆滚滚小仓鼠，灰紫色耳朵和脚掌，双爪抱着装有三张资料卡的深蓝文件夹。透明背景，冷色银灰细描边。</desc>
+  <defs>
+    <linearGradient id="fur" x1="218" y1="92" x2="436" y2="568" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#76879F"/><stop offset="1" stop-color="#495B73"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="247" y1="181" x2="369" y2="555" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C2CDDD"/><stop offset="1" stop-color="#A3B2C8"/>
+    </linearGradient>
+    <linearGradient id="ear" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#A5A2BC"/><stop offset="1" stop-color="#817E9B"/>
+    </linearGradient>
+    <linearGradient id="folder-blue" x1="191" y1="326" x2="446" y2="533" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#496A95"/><stop offset="1" stop-color="#304A70"/>
+    </linearGradient>
+    <radialGradient id="blush">
+      <stop stop-color="#8B89AC" stop-opacity=".48"/><stop offset="1" stop-color="#8B89AC" stop-opacity="0"/>
+    </radialGradient>
+    <path id="body-shape" d="M158 318C125 341 112 363 103 391C87 426 77 475 94 499L100 484C99 524 126 552 166 568C205 590 268 580 308 579C352 578 390 592 442 579C496 566 536 534 548 493C568 449 549 391 531 362C525 344 513 331 491 318Z"/>
+    <path id="head-shape" d="M128 191C149 148 179 113 220 101C240 92 263 87 286 89L272 76C268 70 285 59 299 61C321 62 334 72 347 86C385 85 425 101 458 127C487 150 503 176 514 190L527 197L517 204C528 215 541 215 550 216L546 225L562 231L553 238C575 258 583 288 568 310C568 340 550 359 525 367L516 360C493 380 447 381 415 374C378 381 344 379 319 377C286 386 254 385 228 381C190 387 148 380 128 369L121 374C93 359 81 336 88 310C73 292 84 266 105 245L96 247C101 235 113 225 124 221L113 219Z"/>
+    <clipPath id="head-clip"><use href="#head-shape"/></clipPath>
+  </defs>
+  <g id="tuntun" stroke="#202B3C" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <g id="body">
+      <use href="#body-shape" stroke="#91A1B9" stroke-width="8"/>
+      <use href="#body-shape" fill="url(#fur)"/>
+      <path d="M162 354C141 388 120 433 127 471C126 508 147 538 190 551C230 565 267 563 306 560C356 575 410 565 450 550C499 527 526 495 522 454C525 417 508 376 481 353Z" fill="url(#silver)" stroke="none"/>
+      <path d="M127 452C125 490 149 528 183 537L175 525C211 551 254 555 276 549L268 557C299 566 335 566 360 559C396 564 430 551 451 538L444 551C482 538 504 511 514 484C503 531 464 564 414 572C364 581 344 572 308 571C268 572 223 580 183 562C140 549 119 510 127 452Z" fill="#8C9DB5" stroke="none" opacity=".48"/>
+    </g>
+    <g id="foot-left">
+      <path d="M163 563C164 549 184 548 200 553C218 558 229 570 224 580C216 595 176 590 166 580C163 576 162 569 163 563Z" fill="url(#ear)" stroke="#91A1B9" stroke-width="8"/>
+      <path d="M163 563C164 549 184 548 200 553C218 558 229 570 224 580C216 595 176 590 166 580C163 576 162 569 163 563Z" fill="url(#ear)"/>
+      <path d="M175 574Q176 582 183 585" stroke-width="3"/>
+    </g>
+    <g id="foot-right">
+      <path d="M418 569C429 557 453 551 465 555C480 561 476 579 465 585C453 595 422 595 414 585C410 581 413 574 418 569Z" fill="url(#ear)" stroke="#91A1B9" stroke-width="8"/>
+      <path d="M418 569C429 557 453 551 465 555C480 561 476 579 465 585C453 595 422 595 414 585C410 581 413 574 418 569Z" fill="url(#ear)"/>
+      <path d="M464 576Q464 584 458 588" stroke-width="3"/>
+    </g>
+    <g id="head">
+      <g id="ear-left">
+        <path d="M148 193C110 191 97 157 109 117C119 80 151 52 179 53C207 52 232 72 245 104Z" fill="url(#fur)" stroke="#91A1B9" stroke-width="8"/>
+        <path d="M148 193C110 191 97 157 109 117C119 80 151 52 179 53C207 52 232 72 245 104Z" fill="url(#fur)"/>
+        <path d="M146 177C124 172 119 151 126 127C134 104 153 91 171 96C186 100 196 112 201 126" fill="url(#ear)"/>
+        <path d="M137 122Q146 107 156 108" stroke="#B8B5CC" stroke-width="6" opacity=".55"/>
+      </g>
+      <g id="ear-right">
+        <path d="M380 101C391 70 417 40 445 39C479 37 505 62 516 99C528 138 519 163 488 175Z" fill="url(#fur)" stroke="#91A1B9" stroke-width="8"/>
+        <path d="M380 101C391 70 417 40 445 39C479 37 505 62 516 99C528 138 519 163 488 175Z" fill="url(#fur)"/>
+        <path d="M434 110C438 87 452 77 468 80C490 85 501 106 499 127C499 143 492 155 482 160" fill="url(#ear)"/>
+        <path d="M462 91Q451 99 449 111" stroke="#B8B5CC" stroke-width="6" opacity=".45"/>
+      </g>
+      <use href="#head-shape" stroke="#91A1B9" stroke-width="8"/>
+      <use href="#head-shape" fill="url(#silver)" stroke="none"/>
+      <g clip-path="url(#head-clip)" stroke="none">
+        <path d="M94 234L121 185L168 118L232 79L273 81L267 62L293 55L348 78L408 83L454 105L503 155L536 201L567 230L540 244C519 214 501 205 477 216C462 181 428 153 408 157C384 159 371 181 362 209C343 197 337 181 338 158C327 181 313 204 298 220C296 195 282 180 267 179C233 174 204 202 188 234C157 223 129 228 109 239Z" fill="url(#fur)"/>
+        <path d="M274 86C292 89 310 104 317 117C301 116 287 125 277 137C265 119 281 103 290 101Z" fill="#53667F" opacity=".65"/>
+        <path d="M307 132C295 143 300 161 317 165C291 164 286 145 307 132Z" fill="#44576F"/>
+        <path d="M98 297C90 331 112 352 133 358L128 350C150 370 183 371 207 361C246 378 282 378 313 369C358 379 398 375 422 364C454 375 487 364 504 355L501 364C535 354 558 331 562 301C557 343 538 371 501 382L397 392L211 393L119 382L84 342Z" fill="#8E9FB7" opacity=".60"/>
+        <ellipse cx="169" cy="287" rx="79" ry="60" transform="rotate(13 169 287)" fill="#C1CDDD"/>
+        <ellipse cx="491" cy="261" rx="68" ry="63" transform="rotate(-20 491 261)" fill="#BFCCDD"/>
+        <ellipse cx="188" cy="286" rx="48" ry="30" fill="url(#blush)"/>
+        <ellipse cx="454" cy="255" rx="44" ry="29" fill="url(#blush)"/>
+      </g>
+      <use href="#head-shape"/>
+      <g id="eyes">
+        <g id="eye-left" transform="rotate(5 246 245)">
+          <path d="M226 254C223 238 234 222 246 222C261 221 268 238 266 252C265 263 230 268 226 254Z" fill="#192333" stroke-width="2.5"/>
+          <ellipse cx="245" cy="257" rx="12" ry="6" fill="#2B374A" stroke="none"/>
+          <circle cx="250" cy="231" r="5" fill="#EDF3FB" stroke="none"/>
+        </g>
+        <g id="eye-right" transform="rotate(-4 396 219)">
+          <path d="M377 229C374 213 382 198 394 198C409 197 419 210 418 225C418 237 381 241 377 229Z" fill="#192333" stroke-width="2.5"/>
+          <ellipse cx="398" cy="231" rx="12" ry="6" fill="#2B374A" stroke="none"/>
+          <circle cx="392" cy="207" r="5" fill="#EDF3FB" stroke="none"/>
+        </g>
+      </g>
+      <g id="nose-mouth">
+        <path d="M316 243C316 238 336 232 340 237C344 241 333 251 329 252C325 250 320 247 316 243Z" fill="#535B7B" stroke="none"/>
+        <ellipse cx="333" cy="239" rx="4" ry="1.8" fill="#96A5BF" stroke="none"/>
+        <path d="M330 251L330 258M330 258C325 276 308 281 302 267M330 258C344 273 360 265 359 253" stroke-width="4.2"/>
+      </g>
+      <g id="cheek-marks" stroke="#8F8BAA" stroke-width="3.6">
+        <path d="M183 281L177 291M194 280L188 290M205 279L199 289M447 247L442 258M459 246L454 257M471 245L466 256"/>
+      </g>
+    </g>
+    <g id="archive" transform="rotate(-10 322 417)">
+      <path d="M167 337Q153 337 153 352L153 510Q153 532 175 533L458 533Q478 533 478 511L478 336Z" fill="#304968"/>
+      <path d="M171 515L171 355Q171 347 179 347" stroke="#4C6C97" stroke-width="7"/>
+      <path d="M174 335L174 318Q174 302 191 302L314 302Q323 302 332 314L433 314Q451 314 451 333L451 512L191 520Q174 520 174 500Z" fill="#567AA7"/>
+      <path d="M183 332L183 319Q183 310 193 310L313 310Q319 310 328 321L432 321Q442 321 443 331" stroke="#8FAAD0" stroke-width="3.5"/>
+      <g id="cards" stroke-width="2.5">
+        <rect x="185" y="325" width="109" height="108" rx="12" fill="#BBC9DC" stroke="#718BAF"/>
+        <path d="M193 343L193 338Q193 333 200 333L280 333" stroke="#D5DEEB" stroke-width="3"/>
+        <rect x="297" y="332" width="76" height="100" rx="11" fill="#9B99B6" stroke="#6F7294"/>
+        <path d="M305 349L305 344Q305 339 312 339L358 339" stroke="#BFBDD4" stroke-width="3"/>
+        <rect x="376" y="327" width="86" height="104" rx="11" fill="#8FA5C4" stroke="#617B9E"/>
+        <path d="M385 345L385 340Q385 335 392 335L447 335" stroke="#B7C9E2" stroke-width="3"/>
+      </g>
+      <path d="M179 373Q179 351 201 351L289 351Q300 351 306 362Q310 367 319 367L463 367Q482 367 482 386L482 514Q482 536 460 536L201 536Q179 536 179 514Z" fill="url(#folder-blue)"/>
+      <path d="M185 381Q185 359 203 359L289 359Q296 359 301 368Q307 375 319 375L462 375Q474 375 475 387" stroke="#7394BF" stroke-width="4"/>
+      <path d="M188 508Q191 524 210 524L457 524Q473 524 477 508L477 515Q476 531 459 531L202 531Q186 531 185 514Z" fill="#263F62" stroke="none"/>
+      <g id="folder-label" stroke="none">
+        <rect x="277" y="408" width="116" height="55" rx="14" fill="#ACBDD3"/>
+        <path d="M335 417C338 430 343 434 357 436C343 438 338 443 335 456C332 443 328 438 314 436C328 433 332 430 335 417Z" fill="#43628B"/>
+      </g>
+    </g>
+    <g id="paw-left">
+      <path d="M155 381C130 382 118 404 123 425C128 444 148 453 166 446C188 440 203 421 198 407C194 391 174 380 155 381Z" fill="url(#silver)"/>
+      <path d="M133 402C129 423 143 436 158 437C174 438 182 431 187 425C179 444 154 451 139 440C125 430 123 415 133 402Z" fill="#95A6BE" stroke="none"/>
+      <path d="M186 397C201 399 204 413 195 423C188 431 175 428 173 418C170 410 176 397 186 397Z" fill="url(#ear)" stroke="none"/>
+      <path d="M183 402Q190 398 194 404" stroke="#BAB7D0" stroke-width="3" opacity=".6"/>
+    </g>
+    <g id="paw-right">
+      <path d="M489 350C511 348 530 364 532 385C535 408 518 423 496 420C476 419 458 405 460 387C459 368 471 355 489 350Z" fill="url(#silver)"/>
+      <path d="M521 375C527 393 511 408 498 409C484 409 470 400 466 392C467 410 485 421 502 419C524 417 538 399 521 375Z" fill="#95A6BE" stroke="none"/>
+      <path d="M474 370C487 369 495 379 491 392C488 402 475 404 467 397C455 388 460 375 474 370Z" fill="url(#ear)" stroke="none"/>
+      <path d="M469 376Q477 370 483 375" stroke="#BAB7D0" stroke-width="3" opacity=".6"/>
+    </g>
+  </g>
+</g></svg>
