@@ -342,6 +342,25 @@ bash scripts/update-server-web.sh
 
 网页保持 `0.0.0.0:29011`、HTTP Cookie 覆盖、`--init=false` 及原有资源限制/线程兼容参数。更新后用电脑刷新 `http://120.222.7.246:29011`，首次查看的图片可能稍慢，成功文件写入 `data/image-cache/`；之后源站不可用也能读缓存。浏览器图片地址应变为 `/api/articles/.../images/...`。功能与边界见[图片缓存说明](news-image-cache.md)。服务器仍需验证出网、首次下载和页面实际显示。
 
+### GitHub 拉取失败时：离线增量更新（2026-10-30）
+
+当前服务器已确认停在 `58b6b39`，网页容器内 `assets.juya.uk` 解析为公网地址；`git pull` 返回 `Empty reply from server`，尚未执行网页更新脚本。此时使用 Git bundle 传输已提交的代码增量，保留 Git 历史；不打包工作区中的 `.env`、数据库或图片缓存。Git bundle 的使用方式见 [Git 官方文档](https://git-scm.com/docs/git-bundle)。
+
+本机从已确认的服务器版本生成 `ai-tracker-image-cache.bundle`，传到服务器已有项目的 `data/` 目录后执行：
+
+```bash
+(
+set -e
+cd /iflytek/xdqian4/ai_tracker
+git bundle verify data/ai-tracker-image-cache.bundle
+git fetch data/ai-tracker-image-cache.bundle refs/heads/main
+git merge --ff-only FETCH_HEAD
+bash scripts/update-server-web.sh
+)
+```
+
+服务器此前的 Dockerfile 修改已经 stash，无需再执行 stash，也不要覆盖恢复。bundle 的前置提交校验或快进合并失败即停止，不强制覆盖本地改动。代码传输不依赖 GitHub；Docker 构建如需安装依赖仍需要可用的 Python 包源。包的本机导入验证和服务器部署状态分开记录，服务器显示 `Web is healthy` 后还需检查真实图片响应。
+
 ### 常规 Compose 部署
 
 在线一致备份（输出实际文件名并执行完整性检查）：
