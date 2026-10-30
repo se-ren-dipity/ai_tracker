@@ -11,11 +11,11 @@
 <h1>囤囤 · 视频验收</h1><p>使用网站同一播放器与素材。这里只切换视觉状态，不发送问答或消耗额度。</p>
 <div id="actions"><button data-state="idle">自动待机队列</button><button data-state="thinking">开始思考</button><button data-state="searching">检索</button><button data-state="composing">整理回答</button><button data-clip="pat">摸头</button><button data-state="done">完成后回待机</button><button data-state="waiting">待补充</button><button data-state="error">错误反馈</button><button data-hide>隐藏 / 恢复</button>
 <br><button data-clip="idle_guard">护宝</button><button data-clip="idle_drum">敲鼓</button><button data-clip="idle_listen">侧耳听</button><button data-clip="idle_sneeze">忍喷嚏</button><button data-clip="peek">躲猫猫</button><button data-clip="nap">打盹</button></div>
-<p>自动队列：基础待机一轮约 10 秒 → 随机小表演 → 基础待机；六段每轮不重复。工作状态优先。</p>
+<p>自动队列：基础待机 3 秒 → 完整随机小表演 → 基础待机；六段每轮不重复。工作状态优先。</p>
 <label>背景 <select id="background"><option value="">深色</option><option value="light">白色</option><option value="checker">棋盘</option></select></label>
 <label>尺寸 <select id="size"><option>120</option><option>78</option><option>256</option></select> px</label>
 <div id="stage"><div class="pet-root" data-state="idle"><div class="pet-dock"><span class="pet-art"><span class="pet-vector"><img src="/static/assets/pet/tuntun-cool.svg" alt="囤囤"></span></span></div></div></div>
-<p id="status" role="status"></p><script src="/static/pet-video.js?v=20261029-idle1"></script>
+<p id="status" role="status"></p><script src="/static/pet-video.js?v=20261030-idle3"></script>
 <script>
 const root=document.querySelector('.pet-root'), media=mountPetVideo(root), dock=root.querySelector('.pet-dock');
 document.querySelector('#actions').onclick=event=>{

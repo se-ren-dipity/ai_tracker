@@ -39,7 +39,7 @@ function mountPetVideo(root) {
   }
   function resetIdle() {
     variant = null;
-    if (current?.id === "idle") { current.video.currentTime = 0; current.lastTime = 0; }
+    if (current?.id === "idle") current.video.currentTime = 0;
   }
   function fail(entry) {
     if (current !== entry) return;
@@ -72,7 +72,7 @@ function mountPetVideo(root) {
     }
     stop();
     const video = document.createElement("video");
-    const entry = {id, video, ready:false, lastTime:0};
+    const entry = {id, video, ready:false};
     current = entry;
     video.className = "pet-video";
     video.muted = true; video.playsInline = true; video.loop = clip.loop;
@@ -104,10 +104,8 @@ function mountPetVideo(root) {
     video.addEventListener("timeupdate", () => {
       if (current !== entry || id !== "idle" || !entry.ready || video.paused ||
           !available() || !idle() || action || dragging) return;
-      const wrapped = video.currentTime < entry.lastTime;
-      entry.lastTime = video.currentTime;
-      // One full base clip (~10 seconds), then one single-shot performance.
-      if (wrapped) { variant = nextIdle(); sync(); }
+      // Three seconds of visible base playback, then one full performance.
+      if (video.currentTime >= 3) { variant = nextIdle(); sync(); }
     });
     video.addEventListener("ended", () => {
       if (current !== entry || clip.loop) return;

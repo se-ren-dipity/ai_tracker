@@ -30,7 +30,7 @@ function fixture({hidden=false, reduced=false, alpha=0}={}) {
     tick(ms){now+=ms;for(const [id,t] of timers)if(t.at<=now){timers.delete(id);t.fn();}},
     inView(value){observe([{isIntersecting:value}]);},
     time(seconds){const v=videos.at(-1);v.currentTime=seconds;v.dispatchEvent(new Event("timeupdate"));},
-    cycle(){this.time(9.9);this.time(0);},
+    cycle(){this.time(3);},
     ready:()=>videos.at(-1).dispatchEvent(new Event("loadeddata"))};
 }
 
@@ -102,15 +102,16 @@ test("media failure falls back without retry loop; another clip can still play",
   assert.equal(f.classes.has("pet-video-active"),true);
 });
 
-test("one full idle clip precedes each performance; shuffled bags cover all six without repeats", () => {
+test("three seconds of idle playback precede each full performance; shuffled bags cover all six", () => {
   const f=fixture(), chosen=[]; f.ready();
   for(let i=0;i<18;i++) {
     const base=f.videos.at(-1); assert.match(base.src,/\/idle-v2/);
-    f.time(5); f.tick(60000); // Wall time alone cannot queue animations.
+    f.time(2.99); f.tick(60000); // Wall time alone cannot queue animations.
     assert.equal(f.videos.at(-1),base);
     f.cycle(); f.ready();
     const variant=f.videos.at(-1); assert.equal(variant.loop,false);
     chosen.push(variant.src);
+    f.time(3); f.tick(60000); assert.equal(f.videos.at(-1),variant);
     variant.dispatchEvent(new Event("ended")); f.ready();
   }
   for(let i=0;i<18;i+=6) assert.equal(new Set(chosen.slice(i,i+6)).size,6);
@@ -127,7 +128,7 @@ test("question and pat interrupt idle performances; obsolete media events cannot
     f.tick(60000); assert.equal(f.videos.at(-1),active);
     if(interrupt==="pat") active.dispatchEvent(new Event("ended")); else f.media.setState("idle");
     f.ready(); assert.match(f.videos.at(-1).src,/\/idle-v2/);
-    f.time(9.9); assert.match(f.videos.at(-1).src,/\/idle-v2/);
+    f.time(2.99); assert.match(f.videos.at(-1).src,/\/idle-v2/);
   }
 });
 
