@@ -340,11 +340,11 @@ bash scripts/update-server-web.sh
 
 `scripts/update-server-web.sh` 是此服务器更新步骤的唯一执行脚本：核对原网页容器的数据挂载，复用已导入 ARM64 基础镜像，限资源构建成功后执行 SQLite 在线备份，只停止并重建网页容器；旧网页容器改名保留，启动或健康检查失败时自动恢复旧网页容器。两个后台 worker 不重启，不清理 Docker 全局资源，不修改防火墙、daemon 或其他任务。旧网页容器保留为停止状态；未自动删除备份或旧容器。
 
-网页保持 `0.0.0.0:29011`、HTTP Cookie 覆盖、`--init=false` 及原有资源限制/线程兼容参数。更新后用电脑刷新 `http://120.222.7.246:29011`，首次查看的图片可能稍慢，成功文件写入 `data/image-cache/`；之后源站不可用也能读缓存。浏览器图片地址应变为 `/api/articles/.../images/...`。功能与边界见[图片缓存说明](news-image-cache.md)。服务器仍需验证出网、首次下载和页面实际显示。
+网页保持 `0.0.0.0:29011`、HTTP Cookie 覆盖、`--init=false` 及原有资源限制/线程兼容参数。更新后用电脑刷新 `http://120.222.7.246:29011`，首次查看的图片可能稍慢，成功文件写入 `data/image-cache/`；之后源站不可用也能读缓存。浏览器图片地址应变为 `/api/articles/.../images/...`。功能与边界见[图片缓存说明](news-image-cache.md)。2026-10-30 已完成服务器健康检查、3 张本站图片响应抽查和 Edge 首页显示验收；新镜像为 `ee302d7af369`。
 
 ### GitHub 拉取失败时：离线增量更新（2026-10-30）
 
-当前服务器已确认停在 `58b6b39`，网页容器内 `assets.juya.uk` 解析为公网地址；`git pull` 返回 `Empty reply from server`，尚未执行网页更新脚本。此时使用 Git bundle 传输已提交的代码增量，保留 Git 历史；不打包工作区中的 `.env`、数据库或图片缓存。Git bundle 的使用方式见 [Git 官方文档](https://git-scm.com/docs/git-bundle)。
+本次更新前服务器停在 `58b6b39`，网页容器内 `assets.juya.uk` 解析为公网地址；`git pull` 返回 `Empty reply from server`，尚未执行网页更新脚本。此时使用 Git bundle 传输已提交的代码增量，保留 Git 历史；不打包工作区中的 `.env`、数据库或图片缓存。Git bundle 的使用方式见 [Git 官方文档](https://git-scm.com/docs/git-bundle)。
 
 本机从已确认的服务器版本生成 `ai-tracker-image-cache.bundle`，传到服务器已有项目的 `data/` 目录后执行：
 
@@ -359,7 +359,7 @@ bash scripts/update-server-web.sh
 )
 ```
 
-服务器此前的 Dockerfile 修改已经 stash，无需再执行 stash，也不要覆盖恢复。bundle 的前置提交校验或快进合并失败即停止，不强制覆盖本地改动。代码传输不依赖 GitHub；Docker 构建如需安装依赖仍需要可用的 Python 包源。包的本机导入验证和服务器部署状态分开记录，服务器显示 `Web is healthy` 后还需检查真实图片响应。
+服务器此前的 Dockerfile 修改已经 stash，无需再执行 stash，也不要覆盖恢复。bundle 的前置提交校验或快进合并失败即停止，不强制覆盖本地改动。代码传输不依赖 GitHub；Docker 构建如需安装依赖仍需要可用的 Python 包源。本机已验证 26828 字节的离线包可从 `58b6b39` 快进至 `883270e`；用户随后完成服务器构建与健康检查，线上真实图片响应也已抽查通过。此包是本次发布的固定增量，未来更新应重新生成对应版本的包。
 
 ### 常规 Compose 部署
 
