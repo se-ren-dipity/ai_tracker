@@ -47,10 +47,10 @@
 
 | 功能 | 文档 | 当前状态 |
 | --- | --- | --- |
-| 模型库列表 | [分页、排序与展示](model-library-ui.md) | 默认最近收录/更新；公开管理入口隐藏，本机已验证，服务器待部署本轮修改 |
+| 模型库列表 | [分页、排序与展示](model-library-ui.md) | 默认最近收录/更新、公开管理入口隐藏；本机浏览器及服务器接口已验证，已上线 |
 | 网站宠物助手 | [设计](pet-agent-design.md)、[prompt](pet-agent-system-prompt.md)、[参考分析](dsh-pet-research.md) | 原版已在服务器运行；v0.7 基础待机改为 3 秒，本机验证与服务器更新状态见 [使用说明](pet-agent-v1.md) |
 | 囤囤视频动作 | [动画制作与接入](pet-animation-production.md)、[可灵操作](pet-animation/START-HERE.md)、[六段待机包](pet-animation/IDLE-START-HERE.md) | 九段已接入，基础待机 3 秒后插入一段完整随机表演；总清单 16 个 |
-| 模型维护 Agent | [使用说明](model-agent-v1.md)、[总体设计](model-registry-agent-design.md)、[故障修复](model-admission-recovery-2026-10-30.md) | 服务器为 v2.3；v2.4 系列漏收与完成状态修复已在本机副本验证，服务器待部署 |
+| 模型维护 Agent | [使用说明](model-agent-v1.md)、[总体设计](model-registry-agent-design.md)、[故障修复](model-admission-recovery-2026-10-30.md) | v2.4 已上线；服务器橘鸦三条发布对应五个模型，列表与详情已逐个核对 |
 | 全自动模型审核 | [v3 方案](autonomous-model-review.md) | 用户确认取消人工复核，设计完成；来源级补证据、增量审核与预算闭环尚未实现 |
 | 本地运行与每日采集 | [Windows 启停与排查](local-runtime.md)、[服务器部署](deployment-ubuntu.md) | 本地统一启动三进程并检查心跳，支持一键停止三棵进程树；开机自启未配置，服务器验收独立记录 |
 | 新闻图片 | [服务器图片缓存](news-image-cache.md) | 首次查看下载、同域展示、磁盘限额；本机验证与服务器部署状态见功能文档 |
