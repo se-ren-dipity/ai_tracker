@@ -8,6 +8,10 @@ DEEPSEEK_MODEL = "deepseek-chat"
 _client = None
 
 
+class OutputTruncated(ValueError):
+    """A batch must shrink before another request can fit the output budget."""
+
+
 def thinking_options(answer_tokens: int) -> dict:
     """Background tasks share high reasoning and room for thought plus the answer."""
     return {

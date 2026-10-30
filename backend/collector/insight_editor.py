@@ -6,7 +6,7 @@ import logging
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 
-from backend.collector.enricher import DEEPSEEK_MODEL, get_client, thinking_options
+from backend.collector.enricher import DEEPSEEK_MODEL, get_client, thinking_options, OutputTruncated
 from backend.database import SessionLocal, init_db
 from backend.models.article import Article
 from backend.models.insight import Insight, SourceItem
@@ -40,9 +40,9 @@ async def edit_batch(items):
         response = await client.chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages, response_format={"type": "json_object"},
             **thinking_options(8500))
+        if response.choices[0].finish_reason == "length":
+            raise OutputTruncated("文章输出被截断")
         try:
-            if response.choices[0].finish_reason == "length":
-                raise ValueError("文章输出被截断")
             results = [EditedArticle.model_validate(row) for row in json.loads(response.choices[0].message.content)["items"]]
             if sorted(row.id for row in results) != sorted(row["id"] for row in items):
                 raise ValueError("文章 ID 不完整或重复")
@@ -65,9 +65,23 @@ async def compose_articles():
             items.append({"id": row.id, "title": row.title, "facts": json.loads(row.facts or "[]"),
                           "sources": [{"source_item_id": item.id, "name": article.source,
                                        "date": str(item.published)} for item, article in sources]})
-    for offset in range(0, len(items), 6):
-        batch = items[offset:offset + 6]
-        results = await edit_batch(batch)
+    batches = [items[offset:offset + 6] for offset in range(0, len(items), 6)]
+    composed, failures = 0, 0
+    while batches:
+        batch = batches.pop(0)
+        try:
+            results = await edit_batch(batch)
+        except Exception as exc:
+            if isinstance(exc, OutputTruncated) and len(batch) > 1:
+                middle = len(batch) // 2
+                batches[:0] = [batch[:middle], batch[middle:]]
+                logger.warning("Article output truncated; splitting %s items", len(batch))
+                continue
+            failures += len(batch)
+            logger.warning("Article composition failed for %s: %s", [item["id"] for item in batch], type(exc).__name__)
+            if getattr(exc, "status_code", None) in {401, 402, 403, 429}:
+                break
+            continue
         snapshots = {item["id"]: item["facts"] for item in batch}
         with SessionLocal() as db:
             for result in results:
@@ -77,7 +91,10 @@ async def compose_articles():
                     row.title, row.summary = result.title, result.summary
                     row.body_paragraphs = json.dumps(result.paragraphs, ensure_ascii=False)
             db.commit()
-        logger.info("Composed %d/%d articles", min(offset + 6, len(items)), len(items))
+        composed += len(batch)
+        logger.info("Composed %d/%d articles", composed, len(items))
+    if failures:
+        raise ValueError(f"{failures} 篇文章编排失败，已完成内容保留，失败项等待重试")
 
 
 if __name__ == "__main__":

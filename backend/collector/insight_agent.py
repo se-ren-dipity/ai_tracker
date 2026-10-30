@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import yaml
 from pydantic import BaseModel, Field
 
-from backend.collector.enricher import get_client, DEEPSEEK_MODEL, thinking_options
+from backend.collector.enricher import get_client, DEEPSEEK_MODEL, thinking_options, OutputTruncated
 from backend.collector.source_items import prepare_source_items
 from backend.database import SessionLocal
 from backend.models.insight import Insight, SourceItem
@@ -150,9 +150,9 @@ async def analyze_batch(items, existing):
             **thinking_options(10000),
         )
         raw = response.choices[0].message.content or ""
+        if response.choices[0].finish_reason == "length":
+            raise OutputTruncated("新闻分析输出被截断")
         try:
-            if response.choices[0].finish_reason == "length":
-                raise ValueError("输出被截断")
             results = [Analysis.model_validate(item) for item in json.loads(raw)["items"]]
             if sorted(result.item_id for result in results) != sorted(item["id"] for item in items):
                 raise ValueError("必须为每条输入输出一次，不得遗漏或重复")
@@ -269,8 +269,10 @@ async def build_insights(followups=True):
                     run_state["last_error"] = "；".join(split_errors)
                 rows = db.query(SourceItem).filter(SourceItem.status.in_(["pending", "failed"])).order_by(SourceItem.published.desc(), SourceItem.id).all()
                 items = [{"id": row.id, "title": row.title, "body_text": row.body_text, "source_section": row.source_section, "links": row.links} for row in rows]
-            for offset in range(0, len(items), 6):
-                batch = items[offset:offset + 6]
+            batches = [items[offset:offset + 6] for offset in range(0, len(items), 6)]
+            analyzed = 0
+            while batches:
+                batch = batches.pop(0)
                 with SessionLocal() as db:
                     candidates = candidate_insights(db, batch)
                 try:
@@ -279,8 +281,14 @@ async def build_insights(followups=True):
                         for result in results:
                             save_analysis(db, result)
                         db.commit()
-                    logger.info("Analyzed %d/%d source items", min(offset + 6, len(items)), len(items))
+                    analyzed += len(batch)
+                    logger.info("Analyzed %d/%d source items", analyzed, len(items))
                 except Exception as exc:
+                    if isinstance(exc, OutputTruncated) and len(batch) > 1:
+                        middle = len(batch) // 2
+                        batches[:0] = [batch[:middle], batch[middle:]]
+                        logger.warning("Analysis output truncated; splitting %s items", len(batch))
+                        continue
                     message = f"{type(exc).__name__}: {str(exc)[:400]}"
                     with SessionLocal() as db:
                         for item in batch:

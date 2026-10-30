@@ -44,6 +44,36 @@ class ReadingAssetsTests(unittest.TestCase):
 
 
 class EditorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_truncated_article_output_is_not_retried_at_the_same_size(self):
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="length", message=SimpleNamespace(content='{"items":['))]))
+        with patch.object(editor, "get_client", return_value=client), self.assertRaises(editor.OutputTruncated):
+            await editor.edit_batch([{"id": 1}])
+        self.assertEqual(client.chat.completions.create.await_count, 1)
+
+    async def test_split_articles_save_successes_and_continue_past_one_failed_article(self):
+        engine = create_engine("sqlite://")
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)
+        with session() as db:
+            for i in range(1, 4):
+                db.add(Insight(id=i, event_key=str(i), title="Title", category="engineering", facts="[]"))
+            db.commit()
+        calls = []
+        async def edit(batch):
+            calls.append([item["id"] for item in batch])
+            if len(batch) > 1 or batch[0]["id"] == 2:
+                raise editor.OutputTruncated("too long")
+            return [editor.EditedArticle(id=batch[0]["id"], title="Title", summary="Summary", paragraphs=["First", "Second"])]
+        with patch.object(editor, "SessionLocal", session), patch.object(editor, "edit_batch", side_effect=edit):
+            with self.assertRaises(ValueError):
+                await editor.compose_articles()
+        self.assertEqual(calls, [[1, 2, 3], [1], [2, 3], [2], [3]])
+        with session() as db:
+            self.assertEqual([bool(db.get(Insight, i).body_paragraphs) for i in [1, 2, 3]], [True, False, True])
+
     async def test_retries_invalid_mapping_and_rejects_generated_html(self):
         client = MagicMock()
         client.with_options.return_value = client

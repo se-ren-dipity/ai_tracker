@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from typing import Any, Literal
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from backend.collector.enricher import get_client, DEEPSEEK_MODEL, thinking_options
 from backend.collector.insight_models import model_key
@@ -232,6 +233,21 @@ def admit_candidate(db, source, candidate):
 
 async def reconcile_releases(day=None, session_factory=None):
     factory = session_factory or SessionLocal
+    def failure_detail(exc):
+        original = getattr(exc, "orig", None)
+        return (f"{type(exc).__name__}: {original}" if original else type(exc).__name__)[:400]
+
+    def record_failure(identifiers, detail):
+        try:
+            with factory() as db:
+                db.execute(text("BEGIN IMMEDIATE"))
+                for identifier in identifiers:
+                    source = db.get(SourceItem, identifier)
+                    source.model_discovery = json.dumps({"status": "failed", "error": detail}, ensure_ascii=False)
+                db.commit()
+        except Exception as exc:
+            logger.warning("Could not record release failure: %s", failure_detail(exc))
+
     day = day or datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     with factory() as db:
         prepare_source_items(db)
@@ -265,32 +281,33 @@ async def reconcile_releases(day=None, session_factory=None):
                         reason=item["capture_issue"] or ("复用新闻分析的模型提取结果" if item["cached"] else "发布线索未提取到具体模型，需核对原文")) for item in cached]
             if fallback:
                 results.extend(await extract_batch([{k: v for k, v in item.items() if k not in {"cached", "capture_version", "capture_issue"}} for item in fallback]))
-            with process_lock("registry-write", wait=True), factory() as db:
-                for result in results:
-                    source = db.get(SourceItem, result.source_item_id)
-                    try:
-                        with db.begin_nested():
-                            validate_candidates(result.candidates, source.title + "\n" + source.body_text)
-                            targets = [candidate.model_dump() | {"pending_id": admit_candidate(db, source, candidate)} for candidate in result.candidates]
-                            source.model_discovery = json.dumps({"version": VERSION, "fingerprint": fingerprint(source), "status": "done",
-                                "candidates": targets, "needs_review": result.needs_review, "reason": result.reason,
-                                "checked_at": datetime.now(timezone.utc).isoformat()}, ensure_ascii=False)
-                    except Exception as exc:
-                        failures += 1
-                        source.model_discovery = json.dumps({"status": "failed", "error": type(exc).__name__})
-                        logger.warning("Release coverage source %s failed: %s", source.id, type(exc).__name__)
-                db.commit()
-            logger.info("Release coverage %s/%s source items", min(start + 6, len(items)), len(items))
         except Exception as exc:
             failures += len(batch)
-            with factory() as db:
-                for item in batch:
-                    source = db.get(SourceItem, item["source_item_id"])
-                    source.model_discovery = json.dumps({"status": "failed", "error": type(exc).__name__}, ensure_ascii=False)
-                db.commit()
-            logger.warning("Release coverage batch failed: %s", type(exc).__name__)
+            detail = failure_detail(exc)
+            record_failure([item["source_item_id"] for item in batch], detail)
+            logger.warning("Release coverage extraction failed: %s", detail)
             if getattr(exc, "status_code", None) in {401, 402, 403, 429}:
                 break
+            continue
+        for result in results:
+            try:
+                with process_lock("registry-write", wait=True), factory() as db:
+                    # Reserve the write transaction before reading. A deferred SAVEPOINT
+                    # can fail to upgrade when a worker heartbeat is already writing.
+                    db.execute(text("BEGIN IMMEDIATE"))
+                    source = db.get(SourceItem, result.source_item_id)
+                    validate_candidates(result.candidates, source.title + "\n" + source.body_text)
+                    targets = [candidate.model_dump() | {"pending_id": admit_candidate(db, source, candidate)} for candidate in result.candidates]
+                    source.model_discovery = json.dumps({"version": VERSION, "fingerprint": fingerprint(source), "status": "done",
+                        "candidates": targets, "needs_review": result.needs_review, "reason": result.reason,
+                        "checked_at": datetime.now(timezone.utc).isoformat()}, ensure_ascii=False)
+                    db.commit()
+            except Exception as exc:
+                failures += 1
+                detail = failure_detail(exc)
+                record_failure([result.source_item_id], detail)
+                logger.warning("Release coverage source %s failed: %s", result.source_item_id, detail)
+        logger.info("Release coverage %s/%s source items", min(start + 6, len(items)), len(items))
     if failures:
         raise RuntimeError(f"{failures} 条模型发布对账失败，保留原文等待重试")
 

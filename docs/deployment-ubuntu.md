@@ -16,6 +16,8 @@
 
 模型任务保留独立的 90 秒租约和研究检查点，最多自动尝试 3 次，单项最长 15 分钟。进程文件锁阻止同机启动第二个相同 worker，进程退出后锁由操作系统释放。数据库写事务中不执行网络请求；写锁等待上限 30 秒。不要使用网络文件系统、多机共享 SQLite 或并行运行离线写库脚本。
 
+2026-10-30 采集修复：当前 BCLinux 服务器可使用 `bash scripts/update-server-collector.sh` 单独更新采集容器，包含限额构建、数据库备份、健康检查与容器回退。它不更新网页或模型研究 worker；运行前须按用户要求确认远程命令。修复范围、本机测试及待完成的线上验收见[模型收录恢复记录](model-admission-recovery-2026-10-30.md)。Models Table 网络失败仍需独立处理，采集进程 healthy 不表示数据源已恢复。
+
 ## 1. 准备代码与 Docker
 
 已安装可用的 Docker 和 Compose 时跳过安装；否则按 [Docker Ubuntu 官方步骤](https://docs.docker.com/engine/install/ubuntu/) 安装，并启用开机启动：

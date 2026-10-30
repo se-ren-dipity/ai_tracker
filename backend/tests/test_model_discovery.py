@@ -1,11 +1,16 @@
 import json
 import os
+import sqlite3
+import tempfile
+import threading
+import time
+from contextlib import closing
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -183,6 +188,65 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([m.name for m in db.query(AIModel)], ["Good v1"])
             self.assertEqual(discovery.coverage(db)["unresolved_sources"], 1)
             self.assertEqual(json.loads(db.get(SourceItem, bad_id).model_discovery)["status"], "failed")
+
+    async def test_concurrent_writer_does_not_break_news_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = os.path.join(directory, "tracker.db")
+            self.engine.dispose()
+            self.engine = create_engine(f"sqlite:///{filename}", connect_args={"timeout": 2})
+            database.Base.metadata.create_all(self.engine)
+            self.session = sessionmaker(bind=self.engine, autoflush=False)
+            with self.engine.begin() as connection:
+                connection.execute(text("CREATE TABLE heartbeat_probe (value INTEGER)"))
+            self.source(["Concurrent v1"])
+            reserved, errors = threading.Event(), []
+            def heartbeat():
+                try:
+                    with closing(sqlite3.connect(filename, timeout=2)) as db:
+                        db.execute("INSERT INTO heartbeat_probe VALUES (1)")
+                        reserved.set()
+                        time.sleep(0.05)
+                        db.commit()
+                except Exception as exc:
+                    errors.append(exc)
+            writer = threading.Thread(target=heartbeat)
+            admit = discovery.admit_candidate
+            def contend(db, source, candidate):
+                db.query(AIModel).all()
+                writer.start()
+                reserved.wait(0.15)
+                return admit(db, source, candidate)
+            try:
+                with patch.object(discovery, "admit_candidate", side_effect=contend):
+                    await self.reconcile()
+                writer.join(timeout=3)
+                self.assertFalse(writer.is_alive())
+                self.assertEqual(errors, [])
+                with self.session() as db:
+                    self.assertEqual(db.query(AIModel).one().name, "Concurrent v1")
+                    self.assertEqual(discovery.coverage(db)["checked"], 1)
+            finally:
+                if writer.ident is not None:
+                    writer.join(timeout=3)
+                self.engine.dispose()
+
+    async def test_database_error_keeps_other_sources_and_its_original_reason(self):
+        self.source(["Good before"])
+        bad_id = self.source(["Bad database"])
+        self.source(["Good after"])
+        admit = discovery.admit_candidate
+        def fail_one(db, source, candidate):
+            if source.id == bad_id:
+                db.execute(text("SELECT * FROM missing_admission_table"))
+            return admit(db, source, candidate)
+        with patch.object(discovery, "admit_candidate", side_effect=fail_one):
+            with self.assertRaises(RuntimeError):
+                await self.reconcile()
+        with self.session() as db:
+            self.assertEqual({m.name for m in db.query(AIModel)}, {"Good before", "Good after"})
+            error = json.loads(db.get(SourceItem, bad_id).model_discovery)["error"]
+            self.assertIn("no such table", error)
+            self.assertNotIn("PendingRollbackError", error)
 
     async def test_empty_release_capture_is_flagged_without_automatic_research(self):
         self.source(candidates=[])

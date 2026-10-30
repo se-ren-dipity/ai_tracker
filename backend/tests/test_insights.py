@@ -21,6 +21,7 @@ from backend.models.article import Article
 from backend.models.insight import Insight, SourceItem
 from backend.models.model_db import AIModel
 from backend.models.pending import PendingModel
+from backend.models import operations  # Register the tables used by the status API.
 from backend.routers.insights import router
 from backend.routers.pending import router as pending_router
 
@@ -58,6 +59,14 @@ class SplitTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_truncation_requests_a_smaller_batch_without_repeating_the_same_prompt(self):
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="length", message=SimpleNamespace(content='{"items":['))]))
+        with patch.object(agent, "get_client", return_value=client), self.assertRaises(agent.OutputTruncated):
+            await agent.analyze_batch([{"id": 1, "title": "Test", "body_text": "Text", "links": "[]"}], [])
+        self.assertEqual(client.chat.completions.create.await_count, 1)
+
     async def analyze(self, responses, existing=None, links=None):
         client = MagicMock()
         client.with_options.return_value = client
@@ -219,6 +228,20 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(db.query(Insight).count(), 1)
                 self.assertEqual(db.query(SourceItem).filter_by(status="failed").count(), 0)
                 self.assertEqual(db.get(SourceItem, 2).reason, "无实质信息")
+
+    async def test_truncated_batches_shrink_and_a_bad_item_does_not_block_the_rest(self):
+        calls = []
+        async def analyze(batch, existing):
+            calls.append([item["id"] for item in batch])
+            if len(batch) > 1 or batch[0]["id"] == 2:
+                raise agent.OutputTruncated("too long")
+            return [result(batch[0]["id"])]
+        with patch.object(agent, "SessionLocal", self.session), patch.object(agent, "analyze_batch", side_effect=analyze):
+            await agent.build_insights(followups=False)
+        self.assertEqual(calls, [[1, 2, 3], [1], [2, 3], [2], [3]])
+        with self.session() as db:
+            self.assertEqual([db.get(SourceItem, i).status for i in [1, 2, 3]], ["analyzed", "failed", "analyzed"])
+        self.assertIn("too long", agent.run_state["last_error"])
 
     def test_public_dates_and_cover_only_use_published_event_sections(self):
         with self.session() as db:
