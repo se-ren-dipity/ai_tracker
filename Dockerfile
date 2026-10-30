@@ -1,10 +1,11 @@
 # Dockerfile for the AI Tracker backend.
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.11-slim
+ARG PYTHON_IMAGE=python:3.11-slim
+FROM ${PYTHON_IMAGE}
 
 WORKDIR /app
 
 COPY backend/requirements.lock .
-RUN pip install --no-cache-dir -r requirements.lock
+RUN pip install --no-cache-dir --progress-bar off -r requirements.lock
 
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/

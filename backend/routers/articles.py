@@ -1,14 +1,19 @@
 """FastAPI routers for articles and daily digest."""
 import json
+import re
 from datetime import date, datetime
 from typing import Optional
 
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models.article import Article
+from backend.image_cache import cached_article_html, get_cached_image, image_key, image_nodes
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
 
@@ -77,4 +82,24 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    return article.to_dict(include_content=True)
+    return article.to_dict(include_content=True) | {"content_html": cached_article_html(article)}
+
+
+@router.get("/{article_id}/images/{key}")
+def get_article_image(article_id: int, key: str, db: Session = Depends(get_db)):
+    article = db.get(Article, article_id) if re.fullmatch(r"[0-9a-f]{64}", key) else None
+    if article is None:
+        raise HTTPException(404, "Image not found")
+    source = next((url for url in image_nodes(article.content_html).xpath(".//img/@src")
+                   if image_key(url) == key), None)
+    if source is None:
+        raise HTTPException(404, "Image not found")
+    db.close()  # Do not hold a SQLite connection while waiting for an image download.
+    try:
+        content, media_type = get_cached_image(source)
+    except (httpx.HTTPError, OSError, ValueError):
+        raise HTTPException(503, "图片暂时无法获取，请稍后重试", headers={"Retry-After": "60", "Cache-Control": "no-store"})
+    return Response(content, media_type=media_type, headers={
+        "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    })

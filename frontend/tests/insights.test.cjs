@@ -67,3 +67,18 @@ test("unsafe fallback URLs are skipped", () => {
   img.dispatchEvent(new Event("error"));
   assert.equal(img.src, covers[2].url);
 });
+
+test("server cached images use same-origin URLs including fallback covers", () => {
+  const cached = covers.map((cover, index) => ({...cover, cached_url: `/api/articles/${index + 1}/images/${"a".repeat(64)}`}));
+  assert.equal(context.imageSource(cached[0]), cached[0].cached_url);
+  const {img} = storyImage({title: "News", cover_image: cached[0], cover_images: cached});
+  img.dispatchEvent(new Event("error"));
+  assert.equal(img.src, cached[1].cached_url);
+});
+
+test("invalid cache URLs cannot fall back to the external source or another origin", () => {
+  for (const cached_url of ["//evil.test/x", "https://evil.test/x", "/api/articles/1/images/../secret", "javascript:alert(1)"]) {
+    assert.equal(context.imageSource({...covers[0], cached_url}), "");
+  }
+  assert.equal(context.imageSource(null), "");
+});

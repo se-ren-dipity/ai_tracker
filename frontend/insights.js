@@ -71,9 +71,17 @@ async function loadInsights(refreshDates = true) {
   }
 }
 
+function imageSource(image) {
+  if (!image) return "";
+  if (image.cached_url !== undefined) {
+    return /^\/api\/articles\/[1-9]\d*\/images\/[a-f0-9]{64}$/.test(image.cached_url) ? image.cached_url : "";
+  }
+  return /^https?:\/\//i.test(image.url) ? image.url : "";
+}
+
 function storyCoverImages(item) {
   return (item.cover_images || (item.cover_image ? [item.cover_image] : []))
-    .filter(image => /^https?:\/\//i.test(image.url));
+    .filter(image => imageSource(image));
 }
 
 function bindStoryImage(story, item) {
@@ -85,7 +93,7 @@ function bindStoryImage(story, item) {
     const next = covers[++index];
     if (next) {
       img.alt = next.alt || item.title;
-      img.src = next.url;
+      img.src = imageSource(next);
     } else {
       img.removeEventListener("error", tryNextImage);
       story.classList.add("no-image");
@@ -107,7 +115,7 @@ function renderStory(item, featured) {
       <p class="story-summary">${esc(text)}</p>
       ${featured ? `<a class="story-read" href="#insight/${item.id}">阅读全文 <span aria-hidden="true">→</span></a>` : ""}
     </div>
-    ${cover ? `<a class="story-image" href="#insight/${item.id}" aria-label="阅读：${esc(item.title)}" tabindex="-1"><img src="${esc(cover.url)}" alt="${esc(cover.alt || item.title)}" loading="${featured ? "eager" : "lazy"}" decoding="async" referrerpolicy="no-referrer"></a>` : ""}
+    ${cover ? `<a class="story-image" href="#insight/${item.id}" aria-label="阅读：${esc(item.title)}" tabindex="-1"><img src="${esc(imageSource(cover))}" alt="${esc(cover.alt || item.title)}" loading="${featured ? "eager" : "lazy"}" decoding="async" referrerpolicy="no-referrer"></a>` : ""}
   </article>`;
 }
 
@@ -134,7 +142,7 @@ async function loadInsight(id) {
     if (activeView !== "insight" || currentInsight !== id) return;
     document.title = item.title + " · AI 情报";
     const paragraphs = item.body_paragraphs?.length ? item.body_paragraphs : [item.summary, item.analysis].filter(Boolean);
-    const images = (item.images || []).filter(img => /^https?:\/\//i.test(img.url));
+    const images = (item.images || []).filter(img => imageSource(img));
     const minutes = Math.max(1, Math.ceil(paragraphs.join("").length / 450));
     const sources = item.sources.filter((source, index, all) => all.findIndex(s => s.source === source.source) === index);
     const emphasized = new Set();
@@ -151,7 +159,7 @@ async function loadInsight(id) {
       <article class="insight-prose" aria-label="文章正文">${paragraphs.map((paragraph, index) => {
         const img = imageSlots.get(index);
         const alt = img && (img.alt || `${item.title} · 配图 ${images.indexOf(img) + 1}`);
-        return `<p${index === 0 ? ' class="article-lead"' : ""}>${index === 0 ? esc(paragraph) : articleText(paragraph, item.keywords.slice(0, 4), emphasized)}</p>${img ? `<figure class="article-figure"><button type="button" class="article-image" aria-label="放大：${esc(alt)}"><img src="${esc(img.url)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"></button><figcaption><span>点击放大</span></figcaption></figure>` : ""}`;
+        return `<p${index === 0 ? ' class="article-lead"' : ""}>${index === 0 ? esc(paragraph) : articleText(paragraph, item.keywords.slice(0, 4), emphasized)}</p>${img ? `<figure class="article-figure"><button type="button" class="article-image" aria-label="放大：${esc(alt)}"><img src="${esc(imageSource(img))}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"></button><figcaption><span>点击放大</span></figcaption></figure>` : ""}`;
       }).join("")}</article>
       ${(item.models || []).length ? `<div class="article-model">${item.models.map(model => renderModelChip(model.id, model.name)).join("")}</div>` : item.related_model_id ? `<div class="article-model">${renderModelChip(item.related_model_id)}</div>` : ""}
       <footer class="article-end">

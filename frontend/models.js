@@ -49,7 +49,7 @@ async function loadModelDetail(id) {
               <div><p class="story-meta">${esc(catLabel(story.category))}<span>${fmtDate(story.published)}</span></p>
               <h3><a href="#insight/${story.id}">${esc(story.title)}</a></h3>
               <p class="model-story-summary">${esc(story.summary || "")}</p></div>
-              ${story.cover_image && /^https?:\/\//i.test(story.cover_image.url) ? `<a class="model-story-image" href="#insight/${story.id}" tabindex="-1" aria-hidden="true"><img src="${esc(story.cover_image.url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>` : ""}
+              ${imageSource(story.cover_image) ? `<a class="model-story-image" href="#insight/${story.id}" tabindex="-1" aria-hidden="true"><img src="${esc(imageSource(story.cover_image))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>` : ""}
             </article>`).join("") : '<p class="model-muted">关于这个模型的后续报道，会汇集在这里。</p>'}
           </section>
           ${model.events?.length ? `<section class="model-section"><h2>模型进展</h2><ol class="model-updates">${model.events.map(event => `<li><time>${fmtDate(event.date)}</time><p>${esc(event.summary)}</p>${event.sources.filter(source => /^https?:\/\//i.test(source.url)).map(source => `<a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>`).join(" · ")}</li>`).join("")}</ol></section>` : ""}

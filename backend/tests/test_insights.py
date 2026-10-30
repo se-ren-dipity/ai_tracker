@@ -250,6 +250,8 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([image["url"] for image in item["cover_images"]],
                          ["https://test/first.png", "https://test/second.png"])
         self.assertEqual(item["cover_image"], item["cover_images"][0])
+        self.assertRegex(item["cover_images"][0]["cached_url"], r"^/api/articles/1/images/[a-f0-9]{64}$")
+        self.assertRegex(item["cover_images"][1]["cached_url"], r"^/api/articles/2/images/[a-f0-9]{64}$")
         self.assertEqual(item["cover_images"], self.client.get("/api/insights/1").json()["images"])
 
     async def test_direct_model_admission_keeps_event_link_without_paid_task(self):

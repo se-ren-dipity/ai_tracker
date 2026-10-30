@@ -52,4 +52,5 @@
 | 囤囤视频动作 | [动画制作与接入](pet-animation-production.md)、[可灵操作](pet-animation/START-HERE.md)、[六段待机包](pet-animation/IDLE-START-HERE.md) | 九段已接入，基础待机 10 秒后插入一段随机表演；总清单 16 个 |
 | 模型维护 Agent | [使用说明](model-agent-v1.md)、[总体设计](model-registry-agent-design.md)、[本次审查](model-admission-audit-2026-10-29.md) | v2.1 后台 high 思考通过 159 项后端测试及真实 API 验证；本机待下次启动生效，服务器本次未部署验收 |
 | 本地运行与每日采集 | [Windows 启停与排查](local-runtime.md)、[服务器部署](deployment-ubuntu.md) | 本地统一启动三进程并检查心跳，支持一键停止三棵进程树；开机自启未配置，服务器验收独立记录 |
+| 新闻图片 | [服务器图片缓存](news-image-cache.md) | 首次查看下载、同域展示、磁盘限额；本机验证与服务器部署状态见功能文档 |
 | i讯飞文档维护 | [设计](document-agent-design.md) | 设计参考，未实现自动同步 |

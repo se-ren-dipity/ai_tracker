@@ -6,6 +6,7 @@ from lxml import html
 
 from backend.models.article import Article
 from backend.models.insight import SourceItem
+from backend.image_cache import image_url
 
 
 def web_url(value):
@@ -69,6 +70,8 @@ def reading_assets(db, insight_id):
             seen = {entry["url"] for entry in result[kind]}
             for entry in assets[kind]:
                 if entry["url"] not in seen:
+                    if kind == "images":
+                        entry = {**entry, "cached_url": image_url(article.id, entry["url"])}
                     result[kind].append(entry)
                     seen.add(entry["url"])
     result["images"] = result["images"][:3]
