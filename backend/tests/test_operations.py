@@ -92,6 +92,16 @@ class CollectionJobTests(DatabaseCase):
             with process_lock("collector"):
                 pass
 
+    def test_evidence_gap_is_not_success_or_an_automatic_paid_retry(self):
+        with self.session() as db:
+            row = jobs.enqueue(db)
+            jobs.claim(db)
+            jobs.checkpoint(db, row.id, "discover", "模型收录与对账", "needs_evidence", "橘鸦 1 条来源未核证")
+            jobs.finish(db, row.id)
+            self.assertEqual(row.status, "needs_evidence")
+            self.assertIsNotNone(row.finished_at)
+            self.assertIsNone(jobs.claim(db, datetime.utcnow() + timedelta(days=1)))
+
     def test_stale_or_stopped_workers_are_not_reported_online(self):
         with self.session() as db:
             db.add(WorkerStatus(role="collector", state="running", last_seen=datetime.utcnow() - timedelta(seconds=100)))
@@ -101,6 +111,32 @@ class CollectionJobTests(DatabaseCase):
 
 
 class CollectionPipelineTests(unittest.IsolatedAsyncioTestCase, DatabaseCase):
+    async def test_successful_extraction_with_unresolved_evidence_is_not_done(self):
+        from backend.collector.model_discovery import fingerprint
+        from backend.models.article import Article
+        from backend.models.insight import SourceItem
+        with self.session() as db:
+            article = Article(url="https://example.com/release", title="模型发布", source="橘鸦早报",
+                              published=datetime(2026, 10, 30, 2))
+            db.add(article)
+            db.flush()
+            source = SourceItem(article_id=article.id, section_key="release", source_section="模型发布",
+                                title="新模型系列", body_text="尚待确认具体版本", published=article.published)
+            source.model_discovery = json.dumps({"fingerprint": fingerprint(source), "status": "done",
+                                                 "needs_review": True, "candidates": []})
+            db.add(source)
+            jobs.ensure_daily(db, datetime(2026, 10, 30, 2, tzinfo=timezone.utc))
+            run_id = jobs.claim(db).id
+        with patch.object(worker, "SessionLocal", self.session), patch.object(worker, "configured_sources", return_value=[]), \
+             patch.object(worker, "analyze", AsyncMock()), patch.object(worker, "compose_articles", AsyncMock()), \
+             patch.object(worker, "queue_model_drafts", AsyncMock()), patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test"}):
+            await worker.run_collection(run_id, {})
+        with self.session() as db:
+            row = db.get(CollectionRun, run_id)
+            stage = json.loads(row.stages)["discover"]
+            self.assertEqual((row.status, stage["status"]), ("needs_evidence", "needs_evidence"))
+            self.assertIn("0/1", stage["detail"])
+
     async def test_independent_sources_editor_retry_and_disabled_source(self):
         sources = [{"name": name, "key": name, "url": name, "type": kind, "enabled": enabled}
                    for name, kind, enabled in (("Table", "models_table", True), ("RSS", "rss", True), ("Off", "rss", False))]

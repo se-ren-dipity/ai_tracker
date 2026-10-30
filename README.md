@@ -148,6 +148,8 @@ python -m backend.collector.import_models_table data/imports/lifearchitect-publi
 
 模型维护 Agent、MCP 查询工具和故障恢复的接入说明见 [模型维护 Agent 第一版](docs/model-agent-v1.md)。
 
+后续所有模型审核改由智能体完成，不设人工复核终点；来源优先级、自动补证据、预算与验收见 [自动审核 v3 方案](docs/autonomous-model-review.md)。当前仅完成方案及公开管理入口隐藏，完整自动审核闭环尚未接通，部署状态以功能文档为准。
+
 | 端点 | 说明 |
 |---|---|
 | `GET /api/insights` | 情报列表及章节配图：day/category/q/page/page_size |

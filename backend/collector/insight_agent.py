@@ -67,6 +67,7 @@ priority 按信息增量与影响范围评为0-100；不能只因是融资或行
 同一模型的名称拼写不同，优先沿用已有事件 model_names 中的名称，不重复生成别名；确属不同模型则分别列出。
 model_names 不限前五个：枚举正文明确给出的所有独立版本，包括不同尺寸、Base/Instruct、主模型与配套判别模型。不要为了摘要简洁删掉模型名。来源栏目为“模型发布”时重点核对每一个具体模型；栏目是采集线索，不是免审核的真实性保证。没有正式名称的研究模型不猜名称，在 cautions 说明。
 同时提取 model_candidates，供本地查库后直接建档/融合，避免再次调用模型。每条都必须提供该数组，无候选时 []。仅列本次发布或有新增事实的主体模型，不列比较基线、工具名称或技术底座；多个独立版本逐一列全。候选格式 {"name":"原文具体版本名","organization":"原文明示发布方，未知为空","type":"LLM","summary":"简短用途说明","relation":"release","quote":"含模型名的连续逐字原文，不超过600字","updates":[],"events":[]}。type 可为 LLM/VLM/CodeLM/MathLM/Speech/TTS/ASR/VideoGen/ImageGen/Embedding/Reranker/Other/Unknown，relation 为 release/update/uncertain。
+原文明确列举“某系列包含 4B、9B、27B”等尺寸时，按“系列名 尺寸”分别提取，引用保留包含系列名和版本列表的连续原文；不要因名称未连续拼写就设为身份不清。系列底座和比较模型不提名，未出现的尺寸不补造。
 events 仅在原文明确包含模型名和确切发生日期时提取 kind/occurred_on/summary/quote，kind 限 announced/weights_opened/code_released/api_available/api_discontinued/license_changed，日期 YYYY-MM-DD，quote 须逐字包含名称、日期及实际变化。不用新闻日期或抓取时间推断，不能把计划当已发生；无确切日期用空数组，仅补充字段。
 updates 每项为 field/value/quote，仅提取 organization、params_b、context_length、license、languages、modality_in、modality_out、release_date、announced_date、available_date、weight_access、api_availability；quote 连续逐字引用，未知留空。params_b 为总参数十亿，不用 MoE 激活量；不猜许可证或具体日。语言/模态用数组；weight_access 仅 open/closed，api_availability 为 available/preview/unavailable/discontinued。字段不全不妨碍模型提名。正文资料明确发布即可，不要求已访问官网。
 计划开放权重不能标成已经 open；仅作为底座的模型与使用模型的框架不新建档案，例如 RoboDoctor 是框架而 PrismWAM 是模型。4K 等分辨率选项更新默认归已有模型，除非原文明确给出独立模型身份。未来计划中的版本用 uncertain，不能当作已经发布。

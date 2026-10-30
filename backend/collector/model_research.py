@@ -129,12 +129,12 @@ def number_supported(field, value, quote):
 
 
 def validate_findings(findings, sources, model_name="", candidates=()):
-    from backend.registry import mentions, compatible_versions
+    from backend.registry import mentions, mentions_model_version, compatible_versions
     pages = {s["id"]: s for s in sources if s.get("content")}
     def supported(item):
         return item.source_id in pages and normalized(item.quote) in normalized(pages[item.source_id]["content"])
     key = re.sub(r"[\W_]+", "", model_name.casefold())
-    identity = [item.model_dump() for item in findings.identity if supported(item) and (not key or mentions(model_name, item.quote))]
+    identity = [item.model_dump() for item in findings.identity if supported(item) and (not key or mentions_model_version(model_name, item.quote))]
     updates, rejected, rejected_updates = [], [], []
     for item in findings.updates:
         value = item.value

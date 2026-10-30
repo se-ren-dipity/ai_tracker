@@ -1,5 +1,5 @@
 let adminSession = null, adminTimer = null, adminDestination = "manage";
-const adminLabels = {queued:"排队中", running:"执行中", retry:"等待重试", done:"已完成", failed:"失败",
+const adminLabels = {queued:"排队中", running:"执行中", retry:"等待重试", done:"已完成", failed:"失败", needs_evidence:"待补证据",
   blocked:"等待配置", cached:"使用缓存", disabled:"已停用", ok:"连接正常", idle:"空闲",
   stopped:"已停止", not_started:"尚未启动", disabled_no_api_key:"等待 API 配置"};
 const adminTime = value => value ? new Date(value).toLocaleString("zh-CN", {hour12:false}) : "尚无记录";

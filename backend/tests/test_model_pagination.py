@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -37,7 +37,7 @@ class ModelPaginationTests(unittest.TestCase):
         self.engine.dispose()
 
     def test_pages_cover_every_model_once_with_stable_ties_and_null_dates_last(self):
-        pages = [self.client.get("/api/models", params={"page": page, "page_size": 20}).json()
+        pages = [self.client.get("/api/models", params={"page": page, "page_size": 20, "sort": "release_date"}).json()
                  for page in range(1, 4)]
         self.assertEqual([len(page["items"]) for page in pages], [20, 20, 2])
         ids = [model["id"] for page in pages for model in page["items"]]
@@ -54,6 +54,17 @@ class ModelPaginationTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["type"], "LLM")
         empty = self.client.get("/api/models", params={"q": "does not exist"}).json()
         self.assertEqual((empty["total"], empty["items"]), (0, []))
+
+    def test_default_sort_exposes_recent_undated_models_without_inventing_release_dates(self):
+        for row in self.db.query(AIModel):
+            row.updated_at = datetime(2026, 10, 1)
+        brush = AIModel(name="Brush", type="VLM", release_date=None, updated_at=datetime(2026, 10, 30))
+        self.db.add(brush)
+        self.db.commit()
+        first = self.client.get("/api/models", params={"page_size": 20}).json()["items"][0]
+        self.assertEqual(first["name"], "Brush")
+        self.assertIsNone(first["release_date"])
+        self.assertNotEqual(self.client.get("/api/models", params={"sort": "release_date"}).json()["items"][0]["id"], brush.id)
 
     def test_each_visible_sort_header_orders_the_results(self):
         for field in ["name", "type", "organization", "license", "params_b", "context_length"]:

@@ -18,6 +18,7 @@ from backend.collector.import_models_table import sync_models_table
 from backend.collector.insight_agent import build_insights, run_state
 from backend.collector.insight_editor import compose_articles
 from backend.collector.insight_models import queue_model_drafts
+from backend.collector.model_discovery import release_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ async def run_collection(run_id, state):
             else:
                 await operation()
                 status, detail = "done", None
+                if key == "discover":
+                    with SessionLocal() as db:
+                        run_key = db.get(CollectionRun, run_id).key
+                        status, detail = release_outcome(db, run_key[6:] if run_key.startswith("daily:") else None)
         except Exception as exc:
             status, detail = "failed", type(exc).__name__
             logger.warning("Stage %s failed: %s", key, detail)

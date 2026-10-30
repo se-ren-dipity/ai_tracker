@@ -84,6 +84,30 @@ def mentions(name, text):
     return bool(parts and re.search(r"(?<![a-z0-9])" + r"[\W_]*".join(re.escape(p) for p in parts) + r"(?![a-z0-9])", text.casefold()))
 
 
+def mentions_model_version(name, text):
+    """Accept an explicit family/size list without joining unrelated model names."""
+    if mentions(name, text):
+        return True
+    variant = re.fullmatch(r"(.+?)[\s_-]+(\d+(?:\.\d+)?[BM]|Base|SFT|Instruct|Chat)", name, re.I)
+    if not variant:
+        return False
+    family, size = variant.groups()
+    parts = re.findall(r"[a-z]+|\d+(?:\.\d+)?|[\u4e00-\u9fff]+", family.casefold())
+    family_pattern = r"(?<![a-z0-9])" + r"[\W_]*".join(re.escape(p) for p in parts) + r"(?![a-z0-9])"
+    bridge = r"(?:[\s，,：:（）()]|视觉|语言|多模态|模型|系列|版本|家族|models?|series|family)*"
+    listing = re.search(family_pattern + bridge + r"(?:包括|包含|提供|includes?|contains?|offers?)\s*([^。；;\n!?！？]{1,200})", text, re.I)
+    if not listing:
+        return False
+    values = listing[1]
+    # Another list or a comparison is not evidence that its sizes belong to this family.
+    if re.search(r"包括|包含|提供|相比|对比|优于|另有|另外|includes?|contains?|offers?|versus|\bvs\b", values, re.I):
+        return False
+    sizes = re.findall(r"(?<![a-z0-9])\d+(?:\.\d+)?[bm](?![a-z0-9])", values, re.I)
+    if len(set(s.casefold() for s in sizes)) < 2 and not re.search(r"版本|型号|尺寸|\b(?:variants?|versions?|sizes?)\b", values, re.I):
+        return False
+    return mentions(size, values)
+
+
 def compatible_versions(left, right):
     def signature(name):
         return set(re.findall(r"\d+(?:\.\d+)?(?:b|m)?|\b(?:base|instruct|chat)\b", name.casefold()))

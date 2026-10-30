@@ -452,7 +452,7 @@
 
   <!-- ── 模型库 ── -->
   <div class="view" id="view-models">
-    <div class="brief-heading"><div><h1>模型库</h1><p>按类型、参数规模和许可查找模型。</p></div><a href="#pending">模型审核 →</a></div>
+    <div class="brief-heading"><div><h1>模型库</h1><p>优先展示最近收录或更新的模型，也可按发布日期和其他条件查找。</p></div></div>
     <div class="models-wrap">
       <div class="filter-panel">
         <h3>筛选</h3>
@@ -476,6 +476,11 @@
           </select>
         </div>
         <div class="fg"><label>关键词</label><input type="text" id="m-q" placeholder="搜索名称/机构…"></div>
+        <div class="fg"><label for="m-sort">排序</label><select id="m-sort">
+          <option value="updated_at">最近收录 / 更新</option><option value="release_date">发布日期</option>
+          <option value="name">名称</option><option value="type">类型</option><option value="organization">机构</option>
+          <option value="params_b">参数量</option><option value="context_length">上下文</option><option value="license">许可证</option>
+        </select></div>
       </div>
       <div class="table-area">
         <div class="model-list-toolbar">
@@ -535,11 +540,11 @@
   </div>
 </div>
 
-<footer class="site-footer"><div><strong>AI 情报</strong><span>模型 · 工程 · 行业</span></div><div><a href="#" id="pet-reopen">AI 助手</a> · <a href="#manage">管理员入口</a></div></footer>
+<footer class="site-footer"><div><strong>AI 情报</strong><span>模型 · 工程 · 行业</span></div><div><a href="#" id="pet-reopen">AI 助手</a></div></footer>
 
 <script>
 const API = "";
-let modelSort = "release_date";
+let modelSort = "updated_at";
 const MODEL_PAGE_SIZE = 20;
 let modelPage = 1, modelRequest = 0;
 let feedTimer = null, modelTimer = null;
@@ -571,7 +576,7 @@ async function route(view) {
   if (view !== "manage") clearTimeout(statusTimer);
   if (view !== "pending") clearTimeout(reviewTimer);
   if (view !== "manage") clearTimeout(adminTimer);
-  const managing = ["manage", "pending", "sources"].includes(view);
+  const managing = ["manage", "pending"].includes(view);
   document.getElementById("management-nav").hidden = !managing;
   document.querySelectorAll("[data-manage]").forEach(link => {
     if (link.dataset.manage === view) link.setAttribute("aria-current", "page");
@@ -1007,8 +1012,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  document.getElementById("m-sort").addEventListener("change", event => {
+    modelSort = event.target.value;
+    loadModels(1);
+  });
   document.querySelectorAll("#mt th[data-sort]").forEach(th => {
-    th.addEventListener("click", () => { modelSort = th.dataset.sort; loadModels(1); });
+    th.addEventListener("click", () => {
+      modelSort = th.dataset.sort;
+      document.getElementById("m-sort").value = modelSort;
+      loadModels(1);
+    });
   });
   ["m-pages-top", "m-pages-bottom"].forEach(id => {
     document.getElementById(id).addEventListener("click", event => {
@@ -1022,7 +1035,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 <script src="/static/insights.js?v=image-cache-20261030"></script>
 <script src="/static/models.js?v=image-cache-20261030"></script>
-<script src="/static/admin.js?v=20261029-models"></script>
+<script src="/static/admin.js?v=20261030-coverage"></script>
 <link rel="stylesheet" href="/static/admin.css?v=20261027">
 <link rel="stylesheet" href="/static/pet.css?v=20261029-video1">
 <script src="/static/pet-video.js?v=20261030-idle3"></script>

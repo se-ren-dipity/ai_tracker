@@ -21,7 +21,7 @@ from backend.models.article import Article
 from backend.models.insight import Insight, SourceItem
 from backend.models.pending import PendingModel
 from backend.models.model_task import ModelTask
-from backend.registry import identity_matches, mentions, organization_key, search_models
+from backend.registry import identity_matches, mentions, mentions_model_version, organization_key, search_models
 from backend.runtime import process_lock
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ name 使用原文明确给出的具体版本名，organization 只填原文明�
 框架不等于模型，例如 RoboDoctor 是使用已有模型的免训练机器人框架，不建模型档案；PrismWAM 才是其中的模型。DFlash 等通用技术名不能替代配套权重的具体名称。分辨率选项升级通常更新原模型，不凭“4K版”拆出新模型。计划开放权重不等于已开放，只有已可获取的权重才能标 open；计划中的具体型号保留待确认，不标为已发布。
 每个输入 source_item_id 必须且只能输出一次。每个具体模型单独一项，不合并不同厂商同名模型。不声称访问了链接。不编造字段。
 核对示例：某系列提供 Base 和 SFT，只列两个独立版本，不重复创建系列总称；“B 发布，距 A 发布两周/优于 A”只列 B，A 是前代或比较基线。引用须包含完整模型名，不能用“它/SFT 支持……”替代。如果已命名模型之外还提到未命名配套模型，保留已知候选，同时 needs_review=true、reason 写明未解决线索，不把部分提取当成全部完成。
+系列名与尺寸在同一段明确列举时，可以规范命名为“系列名 尺寸”，例如“ZwZ2 系列，包括基于 Qwen3.5 的 4B、9B 和基于 Qwen3.6 的 27B”应分别提取 ZwZ2 4B、ZwZ2 9B、ZwZ2 27B，引用保留整段。不要因为原文没有连续拼写全名就遗漏这些版本；技术底座 Qwen 不能当成该系列新发布的型号。机构括号别名须逐一在原文出现。
 候选同时返回 type（LLM/VLM/CodeLM/MathLM/Speech/TTS/ASR/VideoGen/ImageGen/Embedding/Reranker/Other/Unknown）、summary（简短用途）、relation（release/update/uncertain）。明确公布新版本或权重开放可 release；既有模型新事实用 update；传言或身份不清 uncertain。不提取仅对比的模型。
 updates 只包含原文直接支持的字段，每项 field/value/quote：field 限 organization、params_b、context_length、license、languages、modality_in、modality_out、release_date、announced_date、available_date、weight_access、api_availability。quote 必须连续逐字引用且不超过600字，数值按原文，日期无确切日则不填；参数用总参数十亿，不用 MoE 激活量；开源不推断许可证。weight_access 仅 open/closed，api_availability 仅 available/preview/unavailable/discontinued。未知留空，不需要联网补齐。
 events 可为空数组。只有原文明示确切发生日期与具体模型名时，提取 kind/occurred_on/summary/quote；kind 限 announced/weights_opened/code_released/api_available/api_discontinued/license_changed，日期 YYYY-MM-DD，quote 连续原文须含日期、模型名和实际变化。禁止把新闻时间或抓取时间当发生日期；没有确切日期只返回字段和关联新闻。
@@ -87,9 +88,10 @@ def validate_candidates(candidates, text):
     seen = set()
     for candidate in candidates:
         key = (model_key(candidate.name), organization_key(candidate.organization))
-        if key in seen or normalized(candidate.quote) not in normalized(text) or model_key(candidate.name) not in model_key(candidate.quote):
+        if key in seen or normalized(candidate.quote) not in normalized(text) or not mentions_model_version(candidate.name, candidate.quote):
             raise ValueError("模型名、逐字引用不匹配或候选重复")
-        if candidate.organization and model_key(candidate.organization) not in model_key(text):
+        organizations = [part.strip() for part in re.split(r"[（）()]", candidate.organization) if part.strip()]
+        if any(model_key(part) not in model_key(text) for part in organizations):
             raise ValueError("发布方未出现在原文中，不确定请留空")
         seen.add(key)
     for candidate in candidates:
@@ -218,7 +220,7 @@ def admit_candidate(db, source, candidate):
     row.evidence = json.dumps(evidence, ensure_ascii=False)
     if ambiguous or candidate.relation == "uncertain" or not research.get("identity"):
         row.review_decision = "deferred"
-        row.review_reason = "身份存在歧义或原文未明确确认发布，保留候选；可由管理员补查。"
+        row.review_reason = "身份存在歧义或原文未明确确认发布，保留候选并等待补充证据。"
     else:
         row.draft = json.dumps(draft, ensure_ascii=False)
         before = model.to_dict() if model else None
@@ -232,7 +234,7 @@ def admit_candidate(db, source, candidate):
     return row.id
 
 
-async def reconcile_releases(day=None, session_factory=None):
+async def reconcile_releases(day=None, session_factory=None, source_ids=None):
     factory = session_factory or SessionLocal
     def failure_detail(exc):
         original = getattr(exc, "orig", None)
@@ -251,9 +253,12 @@ async def reconcile_releases(day=None, session_factory=None):
 
     day = day or datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     with factory() as db:
-        prepare_source_items(db)
+        if source_ids is None:
+            prepare_source_items(db)
         items = []
         for source, article in db.query(SourceItem, Article).join(Article, SourceItem.article_id == Article.id).order_by(SourceItem.published.desc(), SourceItem.id).all():
+            if source_ids is not None and source.id not in source_ids:
+                continue
             if not in_scope(source, article, db.get(Insight, source.insight_id) if source.insight_id else None):
                 continue
             saved = json.loads(source.model_discovery or "{}")
@@ -314,6 +319,10 @@ async def reconcile_releases(day=None, session_factory=None):
 
 
 def coverage(db, day=None):
+    def unresolved(target):
+        return (target["status"] not in {"approved", "rejected"} or target["decision"] == "deferred"
+                or (target["status"] == "approved" and not target["model_id"]))
+
     day = day or datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     rows = []
     for source, article in db.query(SourceItem, Article).join(Article, SourceItem.article_id == Article.id).all():
@@ -332,10 +341,22 @@ def coverage(db, day=None):
                             "task_status": task.status if task else "missing"})
         status = "pending" if saved.get("fingerprint") != fingerprint(source) else saved.get("status", "pending")
         if saved.get("status") == "failed": status = "failed"
+        needs_evidence = saved.get("needs_review", False) or any(unresolved(target) for target in targets)
         rows.append({"source_item_id": source.id, "article_id": article.id, "title": source.title, "source": article.source,
-                     "section": source.source_section, "status": status, "needs_review": saved.get("needs_review", False),
+                     "section": source.source_section, "status": status, "needs_review": needs_evidence,
                      "reason": saved.get("reason") or saved.get("error"), "candidates": targets})
     candidates = [target for row in rows for target in row["candidates"]]
     return {"day": day, "sources": len(rows), "checked": sum(row["status"] == "done" for row in rows),
             "unresolved_sources": sum(row["status"] != "done" or row["needs_review"] for row in rows),
-            "pending_candidates": len({c["pending_id"] for c in candidates if c["status"] != "approved" or c["decision"] == "deferred"}), "items": rows}
+            "pending_candidates": len({c["pending_id"] for c in candidates if unresolved(c)}), "items": rows}
+
+
+def release_outcome(db, day=None):
+    report = coverage(db, day)
+    priority = [row for row in report["items"] if row["source"] == "橘鸦早报" and row["section"] == "模型发布"]
+    ready = sum(row["status"] == "done" and not row["needs_review"] for row in priority)
+    admitted = {c["model_id"] for row in priority for c in row["candidates"]
+                if c["status"] == "approved" and c["model_id"] and c["decision"] != "deferred"}
+    detail = (f"橘鸦模型发布 {ready}/{len(priority)} 条已完成收录，关联 {len(admitted)} 个模型；"
+              f"全部来源仍有 {report['unresolved_sources']} 条待补证据、{report['pending_candidates']} 个候选待核证。")
+    return ("needs_evidence" if report["unresolved_sources"] else "done"), detail

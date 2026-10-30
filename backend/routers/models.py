@@ -30,7 +30,7 @@ def list_models(
     context_min: Optional[int] = None,
     language: Optional[str] = None,
     q: Optional[str] = None,
-    sort: Optional[str] = "release_date",
+    sort: Optional[str] = "updated_at",
     db: Session = Depends(get_db),
 ):
     query = db.query(AIModel)
@@ -56,6 +56,7 @@ def list_models(
 
     # Sorting
     sort_col = {
+        "updated_at": AIModel.updated_at.desc().nullslast(),
         "release_date": AIModel.release_date.desc().nullslast(),
         "params_b": AIModel.params_b.desc().nullslast(),
         "name": AIModel.name,
@@ -63,7 +64,7 @@ def list_models(
         "organization": AIModel.organization.asc().nullslast(),
         "context_length": AIModel.context_length.desc().nullslast(),
         "license": AIModel.license.asc().nullslast(),
-    }.get(sort, AIModel.release_date.desc().nullslast())
+    }.get(sort, AIModel.updated_at.desc().nullslast())
 
     total = query.count()
     items = query.order_by(sort_col, AIModel.id.desc()).offset((page - 1) * page_size).limit(page_size).all()

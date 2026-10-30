@@ -97,6 +97,50 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(db.query(PendingModel).count(), 1)
             self.assertEqual(db.query(ModelTask).count(), 0)
 
+    async def test_juya_series_with_enumerated_sizes_admits_every_version(self):
+        quote = "蚂蚁集团 InclusionAI 发布 Zooming without Zooming v2（ZwZ2）视觉模型系列，包括基于 Qwen3.5 的 4B、9B 和基于 Qwen3.6 的 27B 三个版本。"
+        names = [f"ZwZ2 {size}B" for size in (4, 9, 27)]
+        source_id = self.source(body=quote, candidates=[{
+            "name": name, "organization": "InclusionAI（蚂蚁集团）", "quote": quote, "type": "VLM"
+        } for name in names])
+        with self.session() as db:
+            source = db.get(SourceItem, source_id)
+            source.source_section = "模型发布"
+            db.get(Article, source.article_id).source = "橘鸦早报"
+            db.commit()
+        await self.reconcile()
+        await self.reconcile()
+        self.fallback.assert_not_awaited()
+        with self.session() as db:
+            self.assertEqual({m.name for m in db.query(AIModel)}, set(names))
+            self.assertEqual(db.query(ModelInsight).count(), 3)
+            self.assertEqual(discovery.coverage(db)["unresolved_sources"], 0)
+
+    def test_series_evidence_does_not_invent_sizes_or_mix_base_models(self):
+        quote = "InclusionAI 发布 ZwZ2 系列，包括基于 Qwen3.5 的 4B、9B 和基于 Qwen3.6 的 27B 三个版本。"
+        for name in ("ZwZ2 18B", "Qwen3.5 27B", "ZwZ3 4B"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                discovery.validate_candidates([discovery.Candidate(name=name, quote=quote)], quote)
+        mixed = "Example 系列包含 4B 版本；Other 系列包含 9B 版本。"
+        with self.assertRaises(ValueError):
+            discovery.validate_candidates([discovery.Candidate(name="Example 9B", quote=mixed)], mixed)
+        base_only = "Example 模型包含基于 Other 9B 的视觉编码器。"
+        with self.assertRaises(ValueError):
+            discovery.validate_candidates([discovery.Candidate(name="Example 9B", quote=base_only)], base_only)
+
+    async def test_targeted_replay_leaves_other_sources_untouched(self):
+        selected = self.source(["Selected v1"])
+        other = self.source(["Other v1"], cached=False)
+        with self.session() as db:
+            db.add(Article(url="https://example.com/not-prepared", title="Unprepared", source="RSS", content_html="<p>Unprocessed</p>"))
+            db.commit()
+        await discovery.reconcile_releases(session_factory=self.session, source_ids=[selected])
+        self.fallback.assert_not_awaited()
+        with self.session() as db:
+            self.assertEqual([m.name for m in db.query(AIModel)], ["Selected v1"])
+            self.assertIsNone(db.get(SourceItem, other).model_discovery)
+            self.assertEqual(db.query(SourceItem).count(), 2)
+
     async def test_ambiguous_identity_and_manual_rejection_remain_visible(self):
         with self.session() as db:
             db.add_all([AIModel(name="Echo", organization="Lab A", type="LLM"),
@@ -108,7 +152,8 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         with self.session() as db:
             self.assertEqual(db.query(AIModel).count(), 2)
             self.assertEqual(db.get(PendingModel, 1).status, "rejected")
-            self.assertEqual(discovery.coverage(db)["pending_candidates"], 2)
+            self.assertEqual(discovery.coverage(db)["pending_candidates"], 1)
+            self.assertEqual(discovery.coverage(db)["unresolved_sources"], 1)
             self.assertEqual(db.query(ModelTask).count(), 0)
 
     async def test_short_name_resolves_only_with_explicit_full_repository_name(self):
@@ -255,6 +300,7 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         with self.session() as db:
             self.assertEqual(discovery.coverage(db)["unresolved_sources"], 1)
             self.assertEqual(db.query(ModelTask).count(), 0)
+            self.assertEqual(discovery.release_outcome(db)[0], "needs_evidence")
 
     async def test_unnamed_companion_remains_unresolved_even_when_main_model_admitted(self):
         source_id = self.source()

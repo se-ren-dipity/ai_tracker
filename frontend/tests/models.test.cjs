@@ -41,6 +41,7 @@ test("requests 20 models per page, retains page on return, and disables boundary
   const {context, calls, el} = setup(async url => response(61, Array(url.includes("page=4&") ? 1 : 20).fill(item)));
   await context.loadModels();
   assert.equal(calls[0].searchParams.get("page_size"), "20");
+  assert.equal(calls[0].searchParams.get("sort"), "updated_at");
   assert.match(el("m-count").textContent, /第 1–20 个/);
   assert.match(el("m-pages-top").innerHTML, /disabled>上一页/);
   await context.loadModels(4);
@@ -70,6 +71,11 @@ test("filters and sorting reset to page one and keep current query parameters", 
   await tick();
   assert.equal(calls.at(-1).searchParams.get("page"), "1");
   assert.equal(calls.at(-1).searchParams.get("sort"), "name");
+  assert.equal(el("m-sort").value, "name");
+  el("m-sort").handlers.change({target: {value: "release_date"}});
+  await tick();
+  assert.equal(calls.at(-1).searchParams.get("sort"), "release_date");
+  assert.equal(calls.at(-1).searchParams.get("page"), "1");
 });
 
 test("a later result or error from an old request cannot replace the current page", async () => {

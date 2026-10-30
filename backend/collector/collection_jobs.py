@@ -65,11 +65,11 @@ def claim(db, now=None):
 def retry(db, row):
     from sqlalchemy import update
     result = db.execute(update(CollectionRun).where(CollectionRun.id == row.id,
-                        CollectionRun.status.in_(["failed", "blocked", "retry"])).values(
+                        CollectionRun.status.in_(["failed", "blocked", "retry", "needs_evidence"])).values(
                             status="queued", attempts=0, error=None, finished_at=None, next_run_at=datetime.utcnow()))
     if not result.rowcount:
         db.rollback()
-        raise ValueError("只有失败、等待配置或等待重试的任务可以重试")
+        raise ValueError("只有失败、待补证据、等待配置或等待重试的任务可以重试")
     db.commit()
 
 
@@ -85,10 +85,12 @@ def checkpoint(db, run_id, key, label, status, detail=None):
 def finish(db, run_id):
     row = db.get(CollectionRun, run_id)
     stages = json.loads(row.stages).values()
-    failed = [stage for stage in stages if stage["status"] in ("failed", "cached", "blocked")]
+    failed = [stage for stage in stages if stage["status"] in ("failed", "cached", "blocked", "needs_evidence")]
     row.error = "；".join(f"{stage['label']}：{stage['detail']}" for stage in failed) or None
-    retryable = any(stage["status"] != "blocked" for stage in failed)
-    row.status = ("retry" if row.attempts < MAX_ATTEMPTS else "failed") if retryable else "blocked" if failed else "done"
+    retryable = any(stage["status"] in {"failed", "cached"} for stage in failed)
+    row.status = (("retry" if row.attempts < MAX_ATTEMPTS else "failed") if retryable else
+                  "blocked" if any(stage["status"] == "blocked" for stage in failed) else
+                  "needs_evidence" if failed else "done")
     row.next_run_at = datetime.utcnow() + timedelta(minutes=30)
-    row.finished_at = datetime.utcnow() if row.status in ("done", "failed", "blocked") else None
+    row.finished_at = datetime.utcnow() if row.status in ("done", "failed", "blocked", "needs_evidence") else None
     db.commit()
