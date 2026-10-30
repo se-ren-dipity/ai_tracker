@@ -34,35 +34,35 @@ class BackgroundThinkingTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(module, "get_client", return_value=client):
                 yield sent
 
-    def assert_thinking(self, request, token_limit):
+    def assert_thinking(self, request, token_limit, timeout=300):
         self.assertEqual(request["body"]["thinking"], {"type": "enabled"})
         self.assertEqual(request["body"]["reasoning_effort"], "high")
         self.assertEqual(request["body"]["max_tokens"], token_limit)
         self.assertNotIn("temperature", request["body"])
-        self.assertEqual(request["timeout"]["read"], 300)
+        self.assertEqual(request["timeout"]["read"], timeout)
 
     async def test_background_json_tasks_send_thinking_settings_on_the_wire(self):
         cases = [
             (insight_agent, lambda: insight_agent.analyze_batch([
                 {"id": 1, "title": "Example", "body_text": "Example v2 增加流式接口。", "links": "[]"}], []),
-             {"items": [result().model_dump()]}, 18192),
+             {"items": [result().model_dump()]}, 65536, 600),
             (insight_editor, lambda: insight_editor.edit_batch([{"id": 1}]),
-             {"items": [{"id": 1, "title": "模型发布", "summary": "增加接口", "paragraphs": ["导语", "正文"]}]}, 16692),
+             {"items": [{"id": 1, "title": "模型发布", "summary": "增加接口", "paragraphs": ["导语", "正文"]}]}, 65536, 600),
             (model_discovery, lambda: model_discovery.extract_batch([
                 {"source_item_id": 1, "title": "Release", "body": "Example v2 is released."}]),
              {"items": [{"source_item_id": 1, "candidates": [{"name": "Example v2", "quote": "Example v2 is released."}],
-                         "reason": "发布模型"}]}, 14192),
+                         "reason": "发布模型"}]}, 65536, 600),
             (model_review, lambda: model_review.judge_batch([{"item_id": 1}], []),
-             {"items": [decision().model_dump()]}, 12192),
+             {"items": [decision().model_dump()]}, 12192, 300),
             (model_agent, lambda: model_agent._extract_benchmarks("MMLU score: 88.2. " * 20, "Example v2"),
-             {"MMLU": 88.2}, 8992),
+             {"MMLU": 88.2}, 8992, 300),
         ]
-        for module, run, output, token_limit in cases:
+        for module, run, output, token_limit, timeout in cases:
             with self.subTest(task=module.__name__):
                 async with self.mock_api(module, [completion(output)]) as sent:
                     self.assertTrue(await run())
                 self.assertEqual(len(sent), 1)
-                self.assert_thinking(sent[0], token_limit)
+                self.assert_thinking(sent[0], token_limit, timeout)
 
     async def test_research_preserves_reasoning_across_tool_rounds(self):
         quote = "Example v2 has a 1M token context window."

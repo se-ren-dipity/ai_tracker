@@ -39,7 +39,8 @@ async def edit_batch(items):
     for attempt in range(2):
         response = await client.chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages, response_format={"type": "json_object"},
-            **thinking_options(8500))
+            # 64K total output, including high reasoning.
+            **thinking_options(57344, timeout=600))
         if response.choices[0].finish_reason == "length":
             raise OutputTruncated("文章输出被截断")
         try:

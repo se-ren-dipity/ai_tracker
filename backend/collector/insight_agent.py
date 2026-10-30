@@ -147,7 +147,8 @@ async def analyze_batch(items, existing):
     for attempt in range(2):
         response = await client.chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages, response_format={"type": "json_object"},
-            **thinking_options(10000),
+            # 64K total shared by high reasoning and structured output.
+            **thinking_options(57344, timeout=600),
         )
         raw = response.choices[0].message.content or ""
         if response.choices[0].finish_reason == "length":

@@ -120,7 +120,8 @@ async def extract_batch(items):
                     {"role": "user", "content": json.dumps({"items": remaining, "validation_errors": errors}, ensure_ascii=False)}]
         response = await get_client().chat.completions.create(
             model=DEEPSEEK_MODEL, messages=messages,
-            response_format={"type": "json_object"}, **thinking_options(6000))
+            # 64K total output, including high reasoning.
+            response_format={"type": "json_object"}, **thinking_options(57344, timeout=600))
         try:
             if response.choices[0].finish_reason != "stop":
                 raise ValueError("收录对账响应被截断")

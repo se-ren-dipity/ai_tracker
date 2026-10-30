@@ -12,13 +12,13 @@ class OutputTruncated(ValueError):
     """A batch must shrink before another request can fit the output budget."""
 
 
-def thinking_options(answer_tokens: int) -> dict:
+def thinking_options(answer_tokens: int, *, timeout: int = 300) -> dict:
     """Background tasks share high reasoning and room for thought plus the answer."""
     return {
         "reasoning_effort": "high",
         "extra_body": {"thinking": {"type": "enabled"}},
         "max_tokens": answer_tokens + 8192,
-        "timeout": 300,
+        "timeout": timeout,
     }
 
 
